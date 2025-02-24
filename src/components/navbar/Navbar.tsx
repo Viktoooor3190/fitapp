@@ -1,19 +1,27 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { ModeToggle } from '../mode-toggle';
+import { useAuth } from '../../contexts/AuthContext';
+import { auth } from '../../firebase/config';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const { user } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   return (
     <nav className="fixed w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-50 border-b border-gray-200 dark:border-gray-800">
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link 
-            to="/" 
-            className="flex items-center space-x-2"
-          >
+          <Link to="/" className="flex items-center space-x-2">
             <svg 
               className="w-10 h-10 text-blue-600"
               viewBox="0 0 24 24" 
@@ -47,12 +55,29 @@ const Navbar = () => {
 
           {/* Right Side Items */}
           <div className="hidden md:flex items-center space-x-4">
-            <Link 
-              to="/login"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Login
-            </Link>
+            {user ? (
+              <div className="flex items-center space-x-4">
+                <Link 
+                  to="/dashboard"
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <Link 
+                to="/login"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Login
+              </Link>
+            )}
             <ModeToggle />
           </div>
 
@@ -96,13 +121,34 @@ const Navbar = () => {
               >
                 Get Started
               </Link>
-              <Link 
-                to="/login"
-                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
-                onClick={() => setIsOpen(false)}
-              >
-                Login
-              </Link>
+              {user ? (
+                <>
+                  <Link 
+                    to="/dashboard"
+                    className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    Dashboard
+                  </Link>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setIsOpen(false);
+                    }}
+                    className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors text-left"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <Link 
+                  to="/login"
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                  onClick={() => setIsOpen(false)}
+                >
+                  Login
+                </Link>
+              )}
               <div className="pt-2">
                 <ModeToggle />
               </div>
