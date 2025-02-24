@@ -1,11 +1,15 @@
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { ModeToggle } from '../mode-toggle';
 
 const Navbar = () => {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <nav className="fixed top-0 left-0 right-0 bg-white dark:bg-gray-800 shadow-lg z-50">
+    <nav className="fixed w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-50 border-b border-gray-200 dark:border-gray-800">
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center h-16">
-          {/* Enhanced Logo */}
+          {/* Logo */}
           <Link 
             to="/" 
             className="flex items-center space-x-2"
@@ -28,43 +32,83 @@ const Navbar = () => {
             </span>
           </Link>
 
-          {/* Navigation Links - Tighter Spacing */}
-          <div className="hidden md:flex items-center space-x-6">
-            {['Features', 'Pricing', 'About'].map((item) => (
-              <Link
-                key={item}
-                to={`/${item.toLowerCase()}`}
-                className="relative text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors py-2 text-sm font-medium"
-              >
-                <span className="relative group">
-                  {item}
-                  <span className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-blue-600 to-purple-600 transform origin-left scale-x-0 transition-transform group-hover:scale-x-100 duration-300" />
-                </span>
-              </Link>
-            ))}
+          {/* Desktop Navigation - Centered */}
+          <div className="hidden md:flex items-center justify-center flex-1 space-x-8 mx-8">
+            <Link to="/features" className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors">
+              Features
+            </Link>
+            <Link to="/about" className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors">
+              About
+            </Link>
+            <Link to="/get-started" className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors">
+              Get Started
+            </Link>
           </div>
 
-          {/* Enhanced Auth Buttons */}
-          <div className="flex items-center space-x-3">
-            <Link
+          {/* Right Side Items */}
+          <div className="hidden md:flex items-center space-x-4">
+            <Link 
               to="/login"
-              className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm font-medium px-2 py-2"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               Login
             </Link>
-            <Link
-              to="/signup"
-              className="relative group px-5 py-2.5 text-sm font-semibold rounded-lg 
-                overflow-hidden transition-all duration-300
-                hover:shadow-[0_0_20px_rgba(59,130,246,0.4)]
-                active:scale-95"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-600 transition-transform group-hover:scale-105" />
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-600 opacity-0 group-hover:opacity-100 animate-gradient-xy" />
-              <span className="relative text-white">Sign Up</span>
-            </Link>
+            <ModeToggle />
           </div>
+
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="md:hidden text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              {isOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
         </div>
+
+        {/* Mobile Menu */}
+        {isOpen && (
+          <div className="md:hidden py-4">
+            <div className="flex flex-col space-y-4">
+              <Link 
+                to="/features"
+                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                Features
+              </Link>
+              <Link 
+                to="/about"
+                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                About
+              </Link>
+              <Link 
+                to="/get-started"
+                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                Get Started
+              </Link>
+              <Link 
+                to="/login"
+                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                Login
+              </Link>
+              <div className="pt-2">
+                <ModeToggle />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );

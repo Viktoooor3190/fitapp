@@ -1,3 +1,6 @@
+import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
+
 const Hero = () => {
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -17,15 +20,10 @@ const Hero = () => {
 
         {/* Decorative Shapes */}
         <div className="absolute inset-0">
-          {/* Top left */}
           <div className="absolute top-20 left-20 w-32 h-32 border-2 border-white/20 rounded-lg transform rotate-45 animate-float-diagonal" />
-          {/* Bottom right */}
           <div className="absolute bottom-20 right-20 w-40 h-40 border-2 border-white/20 rounded-lg transform -rotate-12 animate-float-diagonal-reverse" />
-          {/* Middle left */}
           <div className="absolute top-1/2 left-10 w-24 h-24 border-2 border-white/20 rounded-lg transform rotate-12 animate-float-horizontal" />
-          {/* Top right */}
           <div className="absolute top-40 right-32 w-28 h-28 border-2 border-white/20 rounded-lg transform -rotate-45 animate-float-circular" />
-          {/* Additional shapes */}
           <div className="absolute bottom-32 left-32 w-20 h-20 border-2 border-white/20 rounded-lg transform rotate-3 animate-float-circular-reverse" />
           <div className="absolute top-1/3 right-1/4 w-36 h-36 border-2 border-white/20 rounded-lg transform -rotate-6 animate-float-horizontal-reverse" />
         </div>
@@ -36,14 +34,15 @@ const Hero = () => {
         <h1 className="text-6xl md:text-7xl font-extrabold text-white mb-6 animate-fade-in-up">
           Transform Your
           <span className="bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">
-            {" "}Fitness Journey
+            {" "}Coaching Business
           </span>
         </h1>
         
         <p className="text-2xl md:text-3xl text-gray-200 mb-12 max-w-3xl mx-auto leading-relaxed animate-fade-in-up-delay">
-          Track, improve, and achieve your fitness goals with our comprehensive platform
+          Take your coaching to the next level with AI-powered automation, client tracking, 
+          and personalized fitness solutions—all under your own brand.
         </p>
-
+        
         <div className="flex flex-col sm:flex-row justify-center gap-6 animate-fade-in-up-delay-2">
           <button className="px-8 py-4 text-lg font-semibold rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 text-white transform transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
             Get Started
@@ -54,7 +53,7 @@ const Hero = () => {
         </div>
       </div>
 
-      {/* Animated Blobs with more varied movements */}
+      {/* Animated Blobs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-blue-500/20 rounded-full mix-blend-multiply filter blur-xl animate-float-diagonal" />
         <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-purple-500/20 rounded-full mix-blend-multiply filter blur-xl animate-float-circular" />
