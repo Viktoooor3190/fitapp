@@ -1,0 +1,51 @@
+---
+description: 
+globs: 
+---
+Use TypeScript strictly
+
+No any, prefer unknown or strict type definitions.
+Define reusable types/interfaces in a dedicated @/types folder.
+Follow React best practices
+
+Use functional components only.
+Prefer composition over props drilling (use Context API or Zustand when needed).
+Use React Hooks properly (useEffect only for side effects, useMemo for expensive calculations, useCallback for function references).
+State Management Rules
+
+Use Zustand for global state management, avoid Redux unless necessary.
+Local component state should be handled with useState or useReducer.
+Data Fetching Guidelines
+
+Use React Query (@tanstack/react-query) for all API calls.
+All API calls should be centralized in @/services/api.ts.
+Use Axios with interceptors for authentication and error handling.
+Styling Rules
+
+Use TailwindCSS as the primary styling approach.
+No inline styles unless dynamically necessary.
+Keep reusable styles in @/styles and component-specific styles within components.
+Component & Folder Structure
+
+Component files: PascalCase (UserCard.tsx).
+Hooks: camelCase (useFetch.ts).
+Pages: Inside @/pages, following route structure (/dashboard, /profile).
+Shared components: Inside @/components.
+Code Quality & Formatting
+
+Enforce ESLint & Prettier rules at all times.
+Use absolute imports (@/components, @/hooks) instead of relative imports.
+Environment Variables
+
+Use Vite's built-in environment variables (VITE_API_URL, VITE_ENV_MODE).
+Store all API keys and secrets in .env.local.
+Testing & Debugging
+
+Use Jest & React Testing Library for unit and integration tests.
+Write tests for critical components, hooks, and API calls.
+Use msw (Mock Service Worker) for API mocks.
+Performance Optimization
+
+Optimize component re-renders (useMemo, useCallback).
+Avoid prop drilling, use Context API or Zustand.
+Lazy load components where necessary (React.lazy() with Suspense).
