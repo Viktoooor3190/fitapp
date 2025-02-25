@@ -3,9 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { auth } from "../firebase/config";
 import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { useSubdomain } from "../contexts/SubdomainContext";
+import { db } from "../firebase/config";
+import { arrayUnion, serverTimestamp } from "firebase/firestore";
 
 const SignUp = () => {
   const navigate = useNavigate();
+  const { subdomain, coachId } = useSubdomain();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -27,7 +31,27 @@ const SignUp = () => {
     setIsLoading(true);
 
     try {
-      await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      // Create user account
+      const userCredential = await createUserWithEmailAndPassword(
+        auth, 
+        formData.email, 
+        formData.password
+      );
+
+      // Create user profile with coach reference
+      await db.collection('clients').doc(userCredential.user.uid).set({
+        email: formData.email,
+        coachId: coachId,
+        registeredViaSubdomain: subdomain,
+        createdAt: serverTimestamp(),
+        // ... other user data
+      });
+
+      // Add client to coach's clients array
+      await db.collection('coaches').doc(coachId).update({
+        clients: arrayUnion(userCredential.user.uid)
+      });
+
       navigate('/dashboard');
     } catch (error: any) {
       setError(error.message);

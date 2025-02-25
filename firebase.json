@@ -11,5 +11,27 @@
         "*.local"
       ]
     }
+  ],
+  "hosting": {
+    "target": "main",
+    "public": "dist",
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "hosting": [
+    {
+      "target": "coaches",
+      "public": "dist",
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
   ]
 }

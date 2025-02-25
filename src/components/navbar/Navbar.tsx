@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { ModeToggle } from '../mode-toggle';
 import { useAuth } from '../../contexts/AuthContext';
@@ -7,6 +7,12 @@ import { auth } from '../../firebase/config';
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useAuth();
+  const location = useLocation();
+
+  // Hide navbar on dashboard
+  if (location.pathname === '/dashboard') {
+    return null;
+  }
 
   const handleLogout = async () => {
     try {
