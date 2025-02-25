@@ -3,6 +3,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { setupUserCollections } from './setupCollections';
 
 // Initialize Firebase Admin
 initializeApp();
@@ -16,14 +17,19 @@ interface UserData {
   // Add other fields as needed
 }
 
-// Create user profile when a new user signs up
+// Export the setupUserCollections function
+export { setupUserCollections };
+
+// Legacy function - keeping for reference but not using
 export const createUserProfile = beforeUserCreated(async (event) => {
   try {
     const { email, uid } = event.data;
+    const timestamp = new Date();
     
+    // Create user document only
     await db.collection('users').doc(uid).set({
       email,
-      createdAt: new Date(),
+      createdAt: timestamp,
       role: 'coach',
       status: 'active'
     });
