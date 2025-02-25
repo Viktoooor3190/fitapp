@@ -1,15 +1,18 @@
 import { Routes, Route } from 'react-router-dom';
+import UserLayout from './components/UserLayout';
 import UserDashboard from './UserDashboard';
-import UserLayout from './UserLayout';
+import Calendar from './Calendar';
+import Settings from './Settings';
 
 const UserRoutes = () => {
   return (
-    <Routes>
-      <Route element={<UserLayout />}>
+    <UserLayout>
+      <Routes>
         <Route index element={<UserDashboard />} />
-        {/* Add more user routes here */}
-      </Route>
-    </Routes>
+        <Route path="calendar" element={<Calendar />} />
+        <Route path="settings" element={<Settings />} />
+      </Routes>
+    </UserLayout>
   );
 };
 
