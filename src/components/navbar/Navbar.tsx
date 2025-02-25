@@ -54,7 +54,10 @@ const Navbar = () => {
             <Link to="/about" className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors">
               About
             </Link>
-            <Link to="/get-started" className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors">
+            <Link
+              to="/signup"
+              className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            >
               Get Started
             </Link>
           </div>
@@ -121,7 +124,7 @@ const Navbar = () => {
                 About
               </Link>
               <Link 
-                to="/get-started"
+                to="/signup"
                 className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
                 onClick={() => setIsOpen(false)}
               >

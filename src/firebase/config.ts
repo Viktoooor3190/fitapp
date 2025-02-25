@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
 // For debugging
@@ -25,10 +25,13 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize services
 const auth = getAuth(app);
-// Enable persistence
-setPersistence(auth, browserLocalPersistence);
-
 const db = getFirestore(app);
 const functions = getFunctions(app);
+
+// Connect to emulators in development
+if (import.meta.env.DEV) {
+  connectAuthEmulator(auth, 'http://localhost:9099');
+  connectFirestoreEmulator(db, 'localhost', 8080);
+}
 
 export { auth, db, functions }; 

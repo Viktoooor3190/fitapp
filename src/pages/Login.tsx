@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { auth } from "../firebase/config";
+import { auth, db } from "../firebase/config";
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { Eye, EyeOff } from "lucide-react";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -16,53 +17,91 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Check if user exists in coaches collection
+      const coachDoc = await getDoc(doc(db, 'coaches', user.uid));
+      
+      // Check if user exists in clients collection
+      const clientDoc = await getDoc(doc(db, 'clients', user.uid));
+
+      if (!coachDoc.exists() && !clientDoc.exists()) {
+        // Create new client profile if user doesn't exist in either collection
+        await setDoc(doc(db, 'clients', user.uid), {
+          name: user.displayName,
+          email: user.email,
+          createdAt: serverTimestamp(),
+          status: 'pending',
+          onboardingCompleted: false
+        });
+        navigate('/onboarding');
+      } else if (coachDoc.exists()) {
+        navigate('/dashboard');
+      } else {
+        // Client exists, check onboarding status
+        const clientData = clientDoc.data();
+        if (clientData?.onboardingCompleted) {
+          navigate('/user');
+        } else {
+          navigate('/onboarding');
+        }
+      }
+    } catch (err) {
+      console.error('Google Sign In Error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to sign in with Google');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
-      // Basic validation
-      if (!formData.email || !formData.password) {
-        throw new Error('Please fill in all fields');
-      }
+      const email = formData.email;
+      const password = formData.password;
 
-      // Email format validation
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        throw new Error('Please enter a valid email address');
-      }
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
 
-      // Password length validation
-      if (formData.password.length < 6) {
-        throw new Error('Password must be at least 6 characters long');
-      }
-
-      // Attempt to sign in
-      await signInWithEmailAndPassword(auth, formData.email, formData.password);
-
-      // If successful, store remember me preference
+      // Store remember me preference
       if (formData.rememberMe) {
-        localStorage.setItem('rememberEmail', formData.email);
+        localStorage.setItem('rememberEmail', email);
       } else {
         localStorage.removeItem('rememberEmail');
       }
 
-      // Navigate to dashboard
-      navigate('/dashboard');
-    } catch (error: any) {
-      // Handle specific Firebase errors
-      if (error.code === 'auth/user-not-found') {
-        setError('No account found with this email');
-      } else if (error.code === 'auth/wrong-password') {
-        setError('Incorrect password');
-      } else if (error.code === 'auth/too-many-requests') {
-        setError('Too many failed attempts. Please try again later');
-      } else if (error.message) {
-        setError(error.message);
+      // Check if user exists in coaches collection
+      const coachDoc = await getDoc(doc(db, 'coaches', user.uid));
+      
+      // Check if user exists in clients collection
+      const clientDoc = await getDoc(doc(db, 'clients', user.uid));
+
+      if (coachDoc.exists()) {
+        navigate('/dashboard');
+      } else if (clientDoc.exists()) {
+        const clientData = clientDoc.data();
+        if (clientData?.onboardingCompleted) {
+          navigate('/user');
+        } else {
+          navigate('/onboarding');
+        }
       } else {
-        setError('Failed to sign in. Please try again');
+        setError('User profile not found');
+        await auth.signOut();
       }
+    } catch (err) {
+      console.error('Login Error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to log in');
     } finally {
       setIsLoading(false);
     }
@@ -79,21 +118,6 @@ const Login = () => {
       }));
     }
   }, []);
-
-  const handleGoogleSignIn = async () => {
-    setError('');
-    setIsLoading(true);
-
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      navigate('/dashboard');
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 pt-32">

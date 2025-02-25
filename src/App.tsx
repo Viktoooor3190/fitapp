@@ -20,85 +20,83 @@ import MessagesPage from './pages/dashboard/messages/MessagesPage';
 import RevenuePage from './pages/dashboard/revenue/RevenuePage';
 import ReportsPage from './pages/dashboard/reports/ReportsPage';
 import ClientDetailsPage from './pages/dashboard/clients/ClientDetailsPage';
+import Questionnaire from './pages/user/Questionnaire';
+import UserRoutes from './pages/user/UserRoutes';
+import OnboardingGuard from './components/guards/OnboardingGuard';
+import RoleSelection from './pages/RoleSelection';
+import ClientSignUp from './pages/ClientSignUp';
+import { EmulatorWarning } from './components/EmulatorWarning';
 
 const App = () => {
   const location = useLocation();
-  const isDashboardRoute = location.pathname.startsWith('/dashboard');
+  
+  // Public paths where navbar should be shown
+  const publicPaths = [
+    '/',
+    '/features',
+    '/about',
+    '/get-started',
+    '/login',
+    '/signup',
+    '/coach-signup',
+    '/client-signup',
+    '/forgot-password'
+  ];
+
+  // Check if current path is a public path that should show navbar
+  const shouldShowNavbar = publicPaths.some(path => 
+    location.pathname === path || // Exact match for root and simple paths
+    (path !== '/' && location.pathname.startsWith(path + '/')) // For nested paths
+  );
 
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light" storageKey="app-theme">
         <AuthProvider>
           <>
-            {!isDashboardRoute && <Navbar />}
+            {shouldShowNavbar && <Navbar />}
             <Routes>
+              {/* Public Routes */}
               <Route path="/" element={<Home />} />
               <Route path="/features" element={<FeaturesPage />} />
               <Route path="/about" element={<AboutPage />} />
-              <Route path="/signup" element={<SignUp />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/get-started" element={<GetStarted />} />
               
-              {/* Dashboard Routes */}
-              <Route path="/dashboard" element={
+              {/* Auth Routes - With Navbar */}
+              <Route path="/signup" element={<RoleSelection />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/coach-signup" element={<SignUp />} />
+              <Route path="/client-signup" element={<ClientSignUp />} />
+              
+              {/* Protected Routes - No Navbar */}
+              <Route path="/dashboard/*" element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <CoachDashboard />
+                    <Routes>
+                      <Route index element={<CoachDashboard />} />
+                      <Route path="clients" element={<ClientsPage />} />
+                      <Route path="clients/:clientId" element={<ClientDetailsPage />} />
+                      <Route path="programs" element={<ProgramsPage />} />
+                      <Route path="schedule" element={<SchedulePage />} />
+                      <Route path="messages" element={<MessagesPage />} />
+                      <Route path="revenue" element={<RevenuePage />} />
+                      <Route path="reports" element={<ReportsPage />} />
+                    </Routes>
                   </DashboardLayout>
                 </ProtectedRoute>
               } />
-              <Route path="/dashboard/clients" element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <ClientsPage />
-                  </DashboardLayout>
-                </ProtectedRoute>
+              
+              <Route path="/onboarding" element={<Questionnaire />} />
+              <Route path="/user/*" element={
+                <OnboardingGuard>
+                  <UserRoutes />
+                </OnboardingGuard>
               } />
-              <Route path="/dashboard/clients/:clientId" element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <ClientDetailsPage />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/dashboard/programs" element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <ProgramsPage />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/dashboard/schedule" element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <SchedulePage />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/dashboard/messages" element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <MessagesPage />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/dashboard/revenue" element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <RevenuePage />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/dashboard/reports" element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <ReportsPage />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              } />
+              
               <Route path="*" element={<Home />} />
             </Routes>
+            {import.meta.env.DEV && <EmulatorWarning />}
           </>
         </AuthProvider>
       </ThemeProvider>

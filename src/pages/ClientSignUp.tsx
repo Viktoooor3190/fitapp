@@ -22,11 +22,11 @@ const ClientSignUp = () => {
   // Create Google Provider instance
   const googleProvider = new GoogleAuthProvider();
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target as HTMLInputElement;
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+      [name]: type === 'checkbox' ? checked : value
     }));
   };
 
@@ -40,7 +40,6 @@ const ClientSignUp = () => {
     setIsLoading(true);
 
     try {
-      // Create user account
       const userCredential = await createUserWithEmailAndPassword(
         auth, 
         formData.email, 
@@ -55,10 +54,10 @@ const ClientSignUp = () => {
         coachId: coachId,
         registeredViaSubdomain: subdomain,
         createdAt: serverTimestamp(),
-        status: 'active'
+        status: 'pending',
+        onboardingCompleted: false
       });
 
-      // Add client to coach's clients array
       if (coachId) {
         const coachRef = doc(db, 'coaches', coachId);
         await updateDoc(coachRef, {
@@ -66,7 +65,7 @@ const ClientSignUp = () => {
         });
       }
 
-      navigate('/dashboard');
+      navigate('/onboarding');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred during signup');
     } finally {
@@ -89,19 +88,22 @@ const ClientSignUp = () => {
           coachId: coachId,
           registeredViaSubdomain: subdomain,
           createdAt: serverTimestamp(),
-          status: 'active'
+          status: 'pending',
+          onboardingCompleted: false
         });
 
-        // Add client to coach's clients array
+        // Add client to coach's clients array if there's a coach
         if (coachId) {
           const coachRef = doc(db, 'coaches', coachId);
           await updateDoc(coachRef, {
             clients: arrayUnion(result.user.uid)
           });
         }
+
+        navigate('/onboarding');
       }
-      navigate('/dashboard');
     } catch (err) {
+      console.error('Google Sign In Error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during Google sign in');
     } finally {
       setIsLoading(false);
@@ -109,7 +111,7 @@ const ClientSignUp = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 pt-16">
+    <div className="min-h-screen bg-[#1a1f2b] pt-32">
       <div className="container mx-auto px-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -127,14 +129,14 @@ const ClientSignUp = () => {
           </div>
 
           {error && (
-            <div className="mb-4 p-4 text-sm text-red-600 bg-red-100 rounded-lg dark:bg-red-900/50 dark:text-red-400">
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Full Name
               </label>
               <input
@@ -144,13 +146,14 @@ const ClientSignUp = () => {
                 required
                 value={formData.name}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm"
+                className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
+                placeholder="John Doe"
               />
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Email
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Email Address
               </label>
               <input
                 type="email"
@@ -159,12 +162,13 @@ const ClientSignUp = () => {
                 required
                 value={formData.email}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm"
+                className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
+                placeholder="you@example.com"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Password
               </label>
               <input
@@ -174,12 +178,13 @@ const ClientSignUp = () => {
                 required
                 value={formData.password}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm"
+                className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
+                placeholder="••••••••"
               />
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Confirm Password
               </label>
               <input
@@ -189,7 +194,8 @@ const ClientSignUp = () => {
                 required
                 value={formData.confirmPassword}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm"
+                className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
+                placeholder="••••••••"
               />
             </div>
 
@@ -203,43 +209,64 @@ const ClientSignUp = () => {
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <label htmlFor="agreeToTerms" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                I agree to the Terms and Conditions
+                I agree to the{' '}
+                <a href="/terms" className="text-blue-600 hover:text-blue-500">
+                  Terms of Service
+                </a>{' '}
+                and{' '}
+                <a href="/privacy" className="text-blue-600 hover:text-blue-500">
+                  Privacy Policy
+                </a>
               </label>
             </div>
 
             <button
               type="submit"
               disabled={isLoading || !formData.agreeToTerms}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
-              {isLoading ? 'Creating Account...' : 'Sign Up'}
+              {isLoading ? 'Creating Account...' : 'Create Account'}
             </button>
           </form>
 
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300 dark:border-gray-600" />
+                <div className="w-full border-t border-gray-200 dark:border-gray-700" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">Or continue with</span>
+                <span className="px-2 bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 text-gray-500">
+                  Or continue with
+                </span>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={isLoading}
-              className="mt-6 w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-            >
-              <img
-                src="https://www.svgrepo.com/show/475656/google-color.svg"
-                alt="Google"
-                className="w-5 h-5 mr-2"
-              />
-              Continue with Google
-            </button>
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading}
+                className="w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <img
+                  src="https://www.svgrepo.com/show/475656/google-color.svg"
+                  alt="Google"
+                  className="w-5 h-5 mr-2"
+                />
+                Continue with Google
+              </button>
+            </div>
           </div>
+
+          <p className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            Already have an account?{' '}
+            <button
+              onClick={() => navigate('/login')}
+              className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+            >
+              Log in
+            </button>
+          </p>
         </motion.div>
       </div>
     </div>

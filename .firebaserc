@@ -1,5 +1,14 @@
 {
   "projects": {
     "default": "fitapp-67d8e"
+  },
+  "targets": {
+    "fitapp-67d8e": {
+      "hosting": {
+        "coaches": [
+          "fitapp-67d8e"
+        ]
+      }
+    }
   }
 }
