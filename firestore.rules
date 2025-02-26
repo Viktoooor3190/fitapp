@@ -1,6 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isUserAuthenticated(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isCoach() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach';
+    }
+    
     match /coaches/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth.uid == userId;
@@ -9,6 +22,23 @@ service cloud.firestore {
     match /clients/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth.uid == userId;
+    }
+    
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isUserAuthenticated(userId);
+    }
+    
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.coachId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+    }
+    
+    match /revenueStats/{statsId} {
+      allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+      allow write: if isAuthenticated() && request.resource.data.coachId == request.auth.uid;
     }
   }
 } 

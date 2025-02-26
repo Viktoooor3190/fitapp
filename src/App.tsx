@@ -13,6 +13,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import CoachDashboard from './pages/dashboard/CoachDashboard';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ClientsPage from './pages/dashboard/clients/ClientsPage';
+import NewClientPage from './pages/dashboard/clients/NewClientPage';
 import DashboardLayout from './components/dashboard/DashboardLayout';
 import ProgramsPage from './pages/dashboard/programs/ProgramsPage';
 import SchedulePage from './pages/dashboard/schedule/SchedulePage';
@@ -26,6 +27,8 @@ import OnboardingGuard from './components/guards/OnboardingGuard';
 import RoleSelection from './pages/RoleSelection';
 import ClientSignUp from './pages/ClientSignUp';
 import { EmulatorWarning } from './components/EmulatorWarning';
+import ProgramDetailsPage from './pages/dashboard/programs/ProgramDetailsPage';
+import NewProgramPage from './pages/dashboard/programs/NewProgramPage';
 
 const App = () => {
   const location = useLocation();
@@ -77,7 +80,10 @@ const App = () => {
                       <Route index element={<CoachDashboard />} />
                       <Route path="clients" element={<ClientsPage />} />
                       <Route path="clients/:clientId" element={<ClientDetailsPage />} />
+                      <Route path="clients/new" element={<NewClientPage />} />
                       <Route path="programs" element={<ProgramsPage />} />
+                      <Route path="programs/:programId" element={<ProgramDetailsPage />} />
+                      <Route path="programs/new" element={<NewProgramPage />} />
                       <Route path="schedule" element={<SchedulePage />} />
                       <Route path="messages" element={<MessagesPage />} />
                       <Route path="revenue" element={<RevenuePage />} />
