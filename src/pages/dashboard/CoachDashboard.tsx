@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   Users, Activity, DollarSign, Calendar, 
-  MessageSquare, Clock, TrendingUp, Loader
+  MessageSquare, Clock, TrendingUp, Loader, Video, MapPin
 } from 'lucide-react';
 import { auth } from '../../firebase/config';
 import { useNavigate } from 'react-router-dom';
@@ -208,13 +208,31 @@ const CoachDashboard = () => {
 
               {/* Upcoming Sessions */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  Upcoming Sessions
-                </h2>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Upcoming Sessions
+                  </h2>
+                  <button 
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    onClick={() => navigateToSection('schedule')}
+                  >
+                    View All
+                  </button>
+                </div>
+                
                 {sessions.length === 0 ? (
-                  <p className="text-gray-500 dark:text-gray-400 text-center py-4">
-                    No upcoming sessions scheduled
-                  </p>
+                  <div className="text-center py-8">
+                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400">
+                      No upcoming sessions scheduled
+                    </p>
+                    <button 
+                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      onClick={() => navigateToSection('schedule')}
+                    >
+                      Schedule Session
+                    </button>
+                  </div>
                 ) : (
                   <div className="space-y-4">
                     {sessions.map((session) => {
@@ -229,11 +247,23 @@ const CoachDashboard = () => {
                       return (
                         <div
                           key={session.id}
-                          className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
+                          className={`flex items-center justify-between p-4 rounded-lg ${
+                            session.status === 'requested'
+                              ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                              : 'bg-gray-50 dark:bg-gray-700/50'
+                          }`}
                         >
                           <div className="flex items-center space-x-4">
-                            <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                              <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                            <div className={`p-2 rounded-lg ${
+                              session.type === 'virtual'
+                                ? 'bg-blue-100 dark:bg-blue-900/20'
+                                : 'bg-purple-100 dark:bg-purple-900/20'
+                            }`}>
+                              {session.type === 'virtual' ? (
+                                <Video className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                              ) : (
+                                <MapPin className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                              )}
                             </div>
                             <div>
                               <p className="text-sm font-medium text-gray-900 dark:text-white">
@@ -242,13 +272,18 @@ const CoachDashboard = () => {
                               <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {formattedDate} at {session.time}
                               </p>
+                              {session.status === 'requested' && (
+                                <span className="text-xs text-yellow-600 dark:text-yellow-400 mt-1 inline-block">
+                                  Awaiting approval
+                                </span>
+                              )}
                             </div>
                           </div>
                           <button 
                             className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                            onClick={() => navigate(`/dashboard/schedule/${session.id}`)}
+                            onClick={() => navigateToSection('schedule')}
                           >
-                            View Details
+                            View
                           </button>
                         </div>
                       );

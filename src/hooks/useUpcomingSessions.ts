@@ -1,95 +1,25 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase/config';
-import { useAuth } from '../contexts/AuthContext';
+import { useSessionData, Session as SessionType } from './useSessionData';
 
-export interface Session {
-  id: string;
-  clientId: string;
-  clientName: string;
-  title: string;
-  date: Date;
-  time: string;
-  duration: number;
-  status: 'scheduled' | 'completed' | 'cancelled';
-  notes?: string;
-}
+export type Session = SessionType;
 
 export const useUpcomingSessions = (limitCount: number = 5) => {
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { sessions: allSessions, loading, error } = useSessionData();
   const [sessions, setSessions] = useState<Session[]>([]);
 
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    // Get current date/time
+    // Filter for upcoming sessions (scheduled and not in the past)
     const now = new Date();
+    const upcomingSessions = allSessions
+      .filter(session => 
+        (session.status === 'scheduled' || session.status === 'requested') && 
+        session.date >= now
+      )
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .slice(0, limitCount);
     
-    // Create a query for upcoming sessions
-    const sessionsRef = collection(db, 'sessions');
-    const sessionsQuery = query(
-      sessionsRef,
-      where('coachId', '==', user.uid),
-      where('status', '==', 'scheduled'),
-      where('date', '>=', now),
-      orderBy('date', 'asc'),
-      limit(limitCount)
-    );
-
-    // Set up real-time listener for sessions
-    const unsubscribe = onSnapshot(
-      sessionsQuery,
-      (snapshot) => {
-        try {
-          const upcomingSessions: Session[] = [];
-          
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            
-            // Convert Firestore timestamp to Date
-            const sessionDate = data.date instanceof Timestamp 
-              ? data.date.toDate() 
-              : new Date(data.date);
-            
-            upcomingSessions.push({
-              id: doc.id,
-              clientId: data.clientId || '',
-              clientName: data.clientName || 'Client',
-              title: data.title || 'Session',
-              date: sessionDate,
-              time: data.time || '',
-              duration: data.duration || 60,
-              status: data.status || 'scheduled',
-              notes: data.notes
-            });
-          });
-          
-          setSessions(upcomingSessions);
-          setLoading(false);
-        } catch (err) {
-          console.error('Error processing session data:', err);
-          setError('Failed to process session data');
-          setLoading(false);
-        }
-      },
-      (err) => {
-        console.error('Error fetching sessions:', err);
-        setError('Failed to fetch session data');
-        setLoading(false);
-      }
-    );
-
-    // Clean up listener on unmount
-    return () => unsubscribe();
-  }, [user, limitCount]);
+    setSessions(upcomingSessions);
+  }, [allSessions, limitCount]);
 
   // Helper function to format session time
   const getNextSessionTime = (): string => {
