@@ -5,6 +5,14 @@ import { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } from 'firebas
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { setupUserCollections } from './setupCollections';
+import {
+  recordNewClientActivity,
+  recordWorkoutCompleteActivity,
+  recordProgressUpdateActivity,
+  recordMessageActivity,
+  recordPaymentActivity,
+  recordSessionCompletedActivity
+} from './activity';
 
 // Initialize Firebase Admin
 initializeApp();
@@ -20,6 +28,16 @@ interface UserData {
 
 // Export the setupUserCollections function
 export { setupUserCollections };
+
+// Export activity tracking functions
+export {
+  recordNewClientActivity,
+  recordWorkoutCompleteActivity,
+  recordProgressUpdateActivity,
+  recordMessageActivity,
+  recordPaymentActivity,
+  recordSessionCompletedActivity
+};
 
 // Legacy function - keeping for reference but not using
 export const createUserProfile = beforeUserCreated(async (event) => {
