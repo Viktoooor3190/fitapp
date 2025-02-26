@@ -52,8 +52,38 @@ const SignUp = () => {
         goals: formData.goals,
         createdAt: serverTimestamp(),
         status: 'pending',
-        clients: []
+        clients: [],
+        programs: [],
+        revenue: { total: 0, monthly: 0 },
+        settings: { notifications: true, darkMode: false },
+        profilePicture: ""
       });
+      
+      // Initialize empty collections for the coach (except clients)
+      const programsCollectionRef = doc(db, 'programs', `${userCredential.user.uid}_placeholder`);
+      const sessionsCollectionRef = doc(db, 'sessions', `${userCredential.user.uid}_placeholder`);
+      const messagesCollectionRef = doc(db, 'messages', `${userCredential.user.uid}_placeholder`);
+      const revenueCollectionRef = doc(db, 'revenue', `${userCredential.user.uid}_placeholder`);
+      const reportsCollectionRef = doc(db, 'reports', `${userCredential.user.uid}_placeholder`);
+      
+      // Create placeholder documents to establish the collections
+      await Promise.all([
+        setDoc(programsCollectionRef, { placeholder: true }),
+        setDoc(sessionsCollectionRef, { placeholder: true }),
+        setDoc(messagesCollectionRef, { placeholder: true }),
+        setDoc(revenueCollectionRef, { placeholder: true }),
+        setDoc(reportsCollectionRef, { placeholder: true, 
+          coachId: userCredential.user.uid,
+          clientRetentionRate: "0%",
+          avgSessionRating: "0/5",
+          clientGoalAchievement: "0%",
+          engagementMetrics: { 
+            workoutCompletionRate: "0%", 
+            sessionAttendance: "0%", 
+            appUsage: "0%" 
+          }
+        })
+      ]);
 
       navigate('/dashboard');
     } catch (err) {
@@ -155,11 +185,11 @@ const SignUp = () => {
                     </div>
                   </label>
                   <input
-                    type="url"
+                    type="text"
                     value={formData.website}
                     onChange={(e) => setFormData({ ...formData, website: e.target.value })}
                     className="w-full px-4 py-3 bg-[#252b3b] border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="https://your-website.com"
+                    placeholder="Enter your website"
                   />
                 </div>
 

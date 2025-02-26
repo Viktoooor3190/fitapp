@@ -41,6 +41,12 @@ service cloud.firestore {
       allow write: if isAuthenticated() && request.resource.data.coachId == request.auth.uid;
     }
     
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+      // Only cloud functions can write to reports
+      allow write: if false;
+    }
+    
     match /activity/{activityId} {
       // Only allow coaches to read their own activity
       allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;

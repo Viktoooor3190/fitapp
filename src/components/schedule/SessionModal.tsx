@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
-import { X, Calendar, Clock, MapPin, Video, User, Info } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Calendar as CalendarIcon, Clock, MapPin, Video, User, Info, ChevronDown } from 'lucide-react';
 import { useClientData } from '../../hooks/useClientData';
 import { useAuth } from '../../contexts/AuthContext';
 import { Session } from '../../hooks/useSessionData';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
+import CustomCalendar from '../ui/CustomCalendar';
+import CustomTimePicker from '../ui/CustomTimePicker';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -21,6 +23,20 @@ const SessionModal = ({ isOpen, onClose, onSave, session, isClient = false }: Se
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  
+  // Refs for custom dropdowns
+  const dateInputRef = useRef<HTMLDivElement>(null);
+  const timeInputRef = useRef<HTMLDivElement>(null);
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
+  const typeDropdownRef = useRef<HTMLDivElement>(null);
+  const durationDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // State for custom dropdowns
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
+  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
+  const [isDurationDropdownOpen, setIsDurationDropdownOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     clientId: '',
@@ -123,6 +139,44 @@ const SessionModal = ({ isOpen, onClose, onSave, session, isClient = false }: Se
       return updatedData;
     });
   };
+  
+  // Handle date change from custom calendar
+  const handleDateChange = (date: Date) => {
+    const formattedDate = date.toISOString().split('T')[0];
+    setFormData(prev => ({ ...prev, date: formattedDate }));
+    setIsCalendarOpen(false);
+  };
+  
+  // Handle time change from custom time picker
+  const handleTimeChange = (time: string) => {
+    setFormData(prev => ({ ...prev, time }));
+    setIsTimePickerOpen(false);
+  };
+
+  // Handle client selection
+  const handleClientSelect = (clientId: string) => {
+    const selectedClient = clients.find(client => client.id === clientId);
+    if (selectedClient) {
+      setFormData(prev => ({
+        ...prev,
+        clientId,
+        clientName: selectedClient.name
+      }));
+    }
+    setIsClientDropdownOpen(false);
+  };
+  
+  // Handle session type selection
+  const handleTypeSelect = (type: 'in-person' | 'virtual') => {
+    setFormData(prev => ({ ...prev, type }));
+    setIsTypeDropdownOpen(false);
+  };
+  
+  // Handle duration selection
+  const handleDurationSelect = (duration: number) => {
+    setFormData(prev => ({ ...prev, duration }));
+    setIsDurationDropdownOpen(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,28 +258,55 @@ const SessionModal = ({ isOpen, onClose, onSave, session, isClient = false }: Se
           )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Client Selection (for coach) */}
+            {/* Client Selection (for coach) with Custom Dropdown */}
             {!isClient && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Client
                 </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <select
-                    name="clientId"
-                    value={formData.clientId}
-                    onChange={handleChange}
-                    className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    required
+                <div className="relative" ref={clientDropdownRef}>
+                  <div 
+                    className="relative cursor-pointer"
+                    onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
                   >
-                    <option value="">Select a client</option>
-                    {clients.map(client => (
-                      <option key={client.id} value={client.id}>
-                        {client.name}
-                      </option>
-                    ))}
-                  </select>
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      readOnly
+                      value={formData.clientName || 'Select a client'}
+                      className="pl-10 pr-10 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white cursor-pointer"
+                    />
+                  </div>
+                  
+                  {isClientDropdownOpen && (
+                    <div className="absolute z-50 mt-2 bg-gray-800 border border-gray-700 rounded-xl shadow-xl p-2 w-full max-h-[240px] overflow-y-auto custom-scrollbar">
+                      {clients.length > 0 ? (
+                        <div className="space-y-1">
+                          {clients.map(client => (
+                            <button
+                              key={client.id}
+                              type="button"
+                              onClick={() => handleClientSelect(client.id)}
+                              className={`
+                                w-full px-4 py-2 rounded-lg text-left transition-colors
+                                ${formData.clientId === client.id 
+                                  ? 'bg-blue-600 text-white' 
+                                  : 'hover:bg-gray-700 text-gray-200'
+                                }
+                              `}
+                            >
+                              {client.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-gray-400">
+                          No clients available
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -263,82 +344,168 @@ const SessionModal = ({ isOpen, onClose, onSave, session, isClient = false }: Se
               />
             </div>
             
-            {/* Session Type */}
+            {/* Session Type with Custom Dropdown */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Session Type
               </label>
-              <div className="relative">
-                {formData.type === 'in-person' ? (
-                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                ) : (
-                  <Video className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                )}
-                <select
-                  name="type"
-                  value={formData.type}
-                  onChange={handleChange}
-                  className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              <div className="relative" ref={typeDropdownRef}>
+                <div 
+                  className="relative cursor-pointer"
+                  onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
                 >
-                  <option value="in-person">In-Person</option>
-                  <option value="virtual">Virtual</option>
-                </select>
+                  {formData.type === 'in-person' ? (
+                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  ) : (
+                    <Video className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  )}
+                  <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    readOnly
+                    value={formData.type === 'in-person' ? 'In-Person' : 'Virtual'}
+                    className="pl-10 pr-10 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white cursor-pointer"
+                  />
+                </div>
+                
+                {isTypeDropdownOpen && (
+                  <div className="absolute z-50 mt-2 bg-gray-800 border border-gray-700 rounded-xl shadow-xl p-2 w-full">
+                    <button
+                      type="button"
+                      onClick={() => handleTypeSelect('in-person')}
+                      className={`
+                        w-full px-4 py-2 rounded-lg text-left transition-colors flex items-center
+                        ${formData.type === 'in-person' 
+                          ? 'bg-blue-600 text-white' 
+                          : 'hover:bg-gray-700 text-gray-200'
+                        }
+                      `}
+                    >
+                      <MapPin className="w-4 h-4 mr-2" />
+                      In-Person
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTypeSelect('virtual')}
+                      className={`
+                        w-full px-4 py-2 rounded-lg text-left transition-colors flex items-center
+                        ${formData.type === 'virtual' 
+                          ? 'bg-blue-600 text-white' 
+                          : 'hover:bg-gray-700 text-gray-200'
+                        }
+                      `}
+                    >
+                      <Video className="w-4 h-4 mr-2" />
+                      Virtual
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             
-            {/* Date */}
+            {/* Date with Custom Calendar */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Date
               </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <input
-                  type="date"
-                  name="date"
-                  value={formData.date}
-                  onChange={handleChange}
-                  className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  required
+              <div className="relative" ref={dateInputRef}>
+                <div 
+                  className="relative cursor-pointer"
+                  onClick={() => setIsCalendarOpen(true)}
+                >
+                  <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    name="date"
+                    value={formData.date ? new Date(formData.date).toLocaleDateString() : ''}
+                    readOnly
+                    className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white cursor-pointer"
+                    required
+                  />
+                </div>
+                
+                <CustomCalendar
+                  selectedDate={formData.date ? new Date(formData.date) : new Date()}
+                  onChange={handleDateChange}
+                  isOpen={isCalendarOpen}
+                  onClose={() => setIsCalendarOpen(false)}
+                  triggerRef={dateInputRef}
                 />
               </div>
             </div>
             
-            {/* Time */}
+            {/* Time with Custom Time Picker */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Time
               </label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <input
-                  type="time"
-                  name="time"
-                  value={formData.time}
-                  onChange={handleChange}
-                  className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  required
+              <div className="relative" ref={timeInputRef}>
+                <div 
+                  className="relative cursor-pointer"
+                  onClick={() => setIsTimePickerOpen(true)}
+                >
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    name="time"
+                    value={formData.time ? formData.time : ''}
+                    readOnly
+                    className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white cursor-pointer"
+                    required
+                  />
+                </div>
+                
+                <CustomTimePicker
+                  selectedTime={formData.time}
+                  onChange={handleTimeChange}
+                  isOpen={isTimePickerOpen}
+                  onClose={() => setIsTimePickerOpen(false)}
+                  triggerRef={timeInputRef}
                 />
               </div>
             </div>
             
-            {/* Duration */}
+            {/* Duration with Custom Dropdown */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Duration (minutes)
               </label>
-              <select
-                name="duration"
-                value={formData.duration}
-                onChange={handleChange}
-                className="px-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value={30}>30 minutes</option>
-                <option value={45}>45 minutes</option>
-                <option value={60}>60 minutes</option>
-                <option value={90}>90 minutes</option>
-                <option value={120}>120 minutes</option>
-              </select>
+              <div className="relative" ref={durationDropdownRef}>
+                <div 
+                  className="relative cursor-pointer"
+                  onClick={() => setIsDurationDropdownOpen(!isDurationDropdownOpen)}
+                >
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${formData.duration} minutes`}
+                    className="pl-10 pr-10 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white cursor-pointer"
+                  />
+                </div>
+                
+                {isDurationDropdownOpen && (
+                  <div className="absolute z-50 mt-2 bg-gray-800 border border-gray-700 rounded-xl shadow-xl p-2 w-full">
+                    {[30, 45, 60, 90, 120].map(duration => (
+                      <button
+                        key={duration}
+                        type="button"
+                        onClick={() => handleDurationSelect(duration)}
+                        className={`
+                          w-full px-4 py-2 rounded-lg text-left transition-colors
+                          ${formData.duration === duration 
+                            ? 'bg-blue-600 text-white' 
+                            : 'hover:bg-gray-700 text-gray-200'
+                          }
+                        `}
+                      >
+                        {duration} minutes
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             
             {/* Location (for in-person) */}

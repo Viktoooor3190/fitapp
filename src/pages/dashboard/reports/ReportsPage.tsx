@@ -2,71 +2,137 @@ import { useState } from 'react';
 import { 
   BarChart2, TrendingUp, Download, 
   Filter, Calendar, Users,
-  ArrowUpRight, ArrowDownRight
+  ArrowUpRight, ArrowDownRight,
+  RefreshCw
 } from 'lucide-react';
-
-interface MetricCard {
-  title: string;
-  value: string | number;
-  change: number;
-  trend: 'up' | 'down';
-  period: string;
-}
+import { useReportsData } from '../../../hooks/useReportsData';
+import { useAuth } from '../../../contexts/AuthContext';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../../firebase/config';
 
 const ReportsPage = () => {
-  const [dateRange, setDateRange] = useState('last-30-days');
+  const [dateRange, setDateRange] = useState('last-7-days');
   const [reportType, setReportType] = useState('performance');
+  const { reportsData, loading, error } = useReportsData(dateRange);
+  const { user } = useAuth();
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
-  const performanceMetrics: MetricCard[] = [
-    {
-      title: 'Client Retention Rate',
-      value: '92%',
-      change: 5.2,
-      trend: 'up',
-      period: 'vs last month'
-    },
-    {
-      title: 'Average Session Rating',
-      value: '4.8/5',
-      change: 0.3,
-      trend: 'up',
-      period: 'vs last month'
-    },
-    {
-      title: 'Client Goal Achievement',
-      value: '78%',
-      change: -2.1,
-      trend: 'down',
-      period: 'vs last month'
-    },
-    {
-      title: 'Active Programs',
-      value: '24',
-      change: 4,
-      trend: 'up',
-      period: 'vs last month'
+  // Handle export report functionality
+  const handleExportReport = () => {
+    // Create a text representation of the report
+    let reportText = `COACH PERFORMANCE REPORT\n`;
+    reportText += `Date Range: ${dateRange}\n\n`;
+    
+    // Add performance metrics
+    reportText += `PERFORMANCE METRICS:\n`;
+    reportsData.performanceMetrics.forEach(metric => {
+      reportText += `${metric.title}: ${metric.value} (${metric.change >= 0 ? '+' : ''}${metric.change}% ${metric.period})\n`;
+    });
+    
+    // Add client progress
+    reportText += `\nCLIENT PROGRESS:\n`;
+    reportText += `Weight Goals: ${reportsData.clientProgress.weightGoals}%\n`;
+    reportText += `Strength Goals: ${reportsData.clientProgress.strengthGoals}%\n`;
+    reportText += `Cardio Goals: ${reportsData.clientProgress.cardioGoals}%\n`;
+    
+    // Add client engagement
+    reportText += `\nCLIENT ENGAGEMENT:\n`;
+    reportText += `Workout Completion Rate: ${reportsData.clientEngagement.workoutCompletionRate}%\n`;
+    reportText += `Session Attendance: ${reportsData.clientEngagement.sessionAttendance}%\n`;
+    reportText += `App Usage: ${reportsData.clientEngagement.appUsage}%\n`;
+    
+    // Add timestamp
+    reportText += `\nReport generated on: ${new Date().toLocaleString()}`;
+    
+    // Create a blob and download it
+    const blob = new Blob([reportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `coach-report-${dateRange}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Handle manual update of reports
+  const handleManualUpdate = async () => {
+    if (!user) return;
+    
+    setUpdating(true);
+    setUpdateError(null);
+    
+    try {
+      // Call the Cloud Function to update reports
+      const manualReportsUpdate = httpsCallable(functions, 'manualReportsUpdate');
+      await manualReportsUpdate();
+      
+      // Refresh the data
+      setDateRange(prev => prev); // This will trigger a re-fetch
+      
+    } catch (err) {
+      console.error('Error updating reports:', err);
+      setUpdateError('Failed to update reports. Please try again later.');
+    } finally {
+      setUpdating(false);
     }
-  ];
+  };
 
   return (
     <div className="h-full p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Reports & Analytics
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Track performance and analyze trends
+            Track your coaching performance and client progress
           </p>
         </div>
-        <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-          <Download className="w-5 h-5 mr-2" />
-          Export Report
-        </button>
+        
+        <div className="flex flex-col sm:flex-row gap-3 mt-4 md:mt-0">
+          {/* Manual Update Button */}
+          <button
+            onClick={handleManualUpdate}
+            disabled={updating || loading}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {updating ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Updating...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Update Reports
+              </>
+            )}
+          </button>
+          
+          {/* Export Button */}
+          <button
+            onClick={handleExportReport}
+            disabled={loading}
+            className="flex items-center px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export
+          </button>
+        </div>
       </div>
-
-      {/* Filters */}
+      
+      {/* Update Error Message */}
+      {updateError && (
+        <div className="bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-lg mb-6">
+          {updateError}
+        </div>
+      )}
+      
+      {/* Filter Controls */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <div className="relative">
           <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -96,127 +162,193 @@ const ReportsPage = () => {
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {performanceMetrics.map((metric, index) => (
-          <div
-            key={index}
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700"
-          >
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {metric.title}
-            </p>
-            <div className="mt-2 flex items-baseline">
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-                {metric.value}
-              </h3>
-              <span className={`ml-2 text-sm flex items-center ${
-                metric.trend === 'up' 
-                  ? 'text-green-600 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
-              }`}>
-                {metric.trend === 'up' ? (
-                  <ArrowUpRight className="w-4 h-4 mr-1" />
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Error!</strong>
+          <span className="block sm:inline"> {error}</span>
+        </div>
+      ) : (
+        <>
+          {/* Metrics Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {reportsData.performanceMetrics.map((metric, index) => (
+              <div
+                key={index}
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700"
+              >
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {metric.title}
+                </p>
+                <div className="mt-2 flex items-baseline">
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {metric.value}
+                  </h3>
+                  <span className={`ml-2 text-sm flex items-center ${
+                    metric.trend === 'up' 
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {metric.trend === 'up' ? (
+                      <ArrowUpRight className="w-4 h-4 mr-1" />
+                    ) : (
+                      <ArrowDownRight className="w-4 h-4 mr-1" />
+                    )}
+                    {Math.abs(metric.change)}%
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {metric.period}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Main Report Content */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Client Progress Overview */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Client Progress Overview
+                  </h2>
+                  <div className="relative ml-2 group">
+                    <div className="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 cursor-help">
+                      ?
+                    </div>
+                    <div className="absolute left-0 bottom-full mb-2 w-64 bg-gray-900 text-white text-xs rounded p-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                      This data is calculated from your clients' actual goals and progress. It shows the average progress percentage across all clients for each goal type.
+                    </div>
+                  </div>
+                </div>
+                {loading ? (
+                  <div className="animate-pulse h-5 w-5 rounded-full bg-gray-200 dark:bg-gray-700"></div>
                 ) : (
-                  <ArrowDownRight className="w-4 h-4 mr-1" />
+                  <button 
+                    onClick={() => setDateRange(dateRange)} 
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Refresh
+                  </button>
                 )}
-                {Math.abs(metric.change)}%
-              </span>
+              </div>
+              
+              {error ? (
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+                  {error}
+                </div>
+              ) : loading ? (
+                <div className="space-y-4">
+                  {/* Loading skeleton */}
+                  {[1, 2, 3].map((i) => (
+                    <div key={i}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <div className="animate-pulse h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                        <div className="animate-pulse h-4 w-8 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                      </div>
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                        <div className="animate-pulse bg-gray-300 dark:bg-gray-600 h-2 rounded-full" style={{ width: '50%' }}></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Progress Bars */}
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600 dark:text-gray-400">Weight Goals</span>
+                      <span className="text-gray-900 dark:text-white">{reportsData.clientProgress.weightGoals}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div 
+                        className="bg-green-600 h-2 rounded-full" 
+                        style={{ width: `${reportsData.clientProgress.weightGoals}%` }} 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600 dark:text-gray-400">Strength Goals</span>
+                      <span className="text-gray-900 dark:text-white">{reportsData.clientProgress.strengthGoals}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full" 
+                        style={{ width: `${reportsData.clientProgress.strengthGoals}%` }} 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600 dark:text-gray-400">Cardio Goals</span>
+                      <span className="text-gray-900 dark:text-white">{reportsData.clientProgress.cardioGoals}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div 
+                        className="bg-purple-600 h-2 rounded-full" 
+                        style={{ width: `${reportsData.clientProgress.cardioGoals}%` }} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {metric.period}
-            </p>
-          </div>
-        ))}
-      </div>
 
-      {/* Main Report Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Client Progress Overview */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Client Progress Overview
-          </h2>
-          <div className="space-y-4">
-            {/* Progress Bars */}
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600 dark:text-gray-400">Weight Goals</span>
-                <span className="text-gray-900 dark:text-white">75%</span>
+            {/* Client Engagement */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Client Engagement
+              </h2>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      Workout Completion Rate
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Last 30 days average
+                    </p>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {reportsData.clientEngagement.workoutCompletionRate}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      Session Attendance
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Last 30 days average
+                    </p>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {reportsData.clientEngagement.sessionAttendance}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      App Usage
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Daily active users
+                    </p>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {reportsData.clientEngagement.appUsage}%
+                  </span>
+                </div>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-green-600 h-2 rounded-full" style={{ width: '75%' }} />
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600 dark:text-gray-400">Strength Goals</span>
-                <span className="text-gray-900 dark:text-white">82%</span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-blue-600 h-2 rounded-full" style={{ width: '82%' }} />
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600 dark:text-gray-400">Cardio Goals</span>
-                <span className="text-gray-900 dark:text-white">68%</span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-purple-600 h-2 rounded-full" style={{ width: '68%' }} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Client Engagement */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Client Engagement
-          </h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                  Workout Completion Rate
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Last 30 days average
-                </p>
-              </div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                87%
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                  Session Attendance
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Last 30 days average
-                </p>
-              </div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                92%
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                  App Usage
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Daily active users
-                </p>
-              </div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                85%
-              </span>
             </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 };

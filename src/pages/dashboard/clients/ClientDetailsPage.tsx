@@ -8,6 +8,9 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, startOfWeek, addDays, isSameDay, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
+import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../../firebase/config';
+import { useAuth } from '../../../contexts/AuthContext';
 
 interface ClientDetails {
   id: string;
@@ -68,6 +71,9 @@ interface ClientSchedule {
 const ClientDetailsPage = () => {
   const { clientId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [client, setClient] = useState<ClientDetails>({
     id: '1',
     name: 'Sarah Johnson',
@@ -136,6 +142,187 @@ const ClientDetailsPage = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDaySchedule, setSelectedDaySchedule] = useState<DaySchedule | null>(null);
+
+  // Fetch client data from Firestore
+  useEffect(() => {
+    if (!clientId || !user) return;
+    
+    const fetchClientData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Get client document
+        const clientRef = doc(db, 'clients', clientId);
+        const clientDoc = await getDoc(clientRef);
+        
+        if (!clientDoc.exists()) {
+          setError('Client not found');
+          setLoading(false);
+          return;
+        }
+        
+        const clientData = clientDoc.data();
+        
+        // Check if this client belongs to the current coach
+        if (clientData.coachId !== user.uid) {
+          setError('You do not have permission to view this client');
+          setLoading(false);
+          return;
+        }
+        
+        // Format client data
+        const formattedClient: ClientDetails = {
+          id: clientDoc.id,
+          name: clientData.name || '',
+          email: clientData.email || '',
+          phone: clientData.phone || '',
+          joinDate: clientData.createdAt ? new Date(clientData.createdAt.toDate()).toISOString().split('T')[0] : '',
+          goals: [],
+          measurements: [],
+          currentProgram: {
+            name: '',
+            startDate: '',
+            completionRate: 0,
+            nextSession: ''
+          },
+          recentActivity: []
+        };
+        
+        // Get client goals
+        if (clientData.goals && Array.isArray(clientData.goals)) {
+          formattedClient.goals = clientData.goals.map((goal: any) => ({
+            type: goal.type || '',
+            target: goal.target || '',
+            progress: goal.progress || 0,
+            deadline: goal.deadline || ''
+          }));
+        } else if (clientData.progress) {
+          // If goals are stored in the progress object
+          const goalTypes = [
+            { key: 'weight', name: 'Weight Loss' },
+            { key: 'strength', name: 'Strength' },
+            { key: 'cardio', name: 'Cardio' }
+          ];
+          
+          goalTypes.forEach(({ key, name }) => {
+            if (clientData.progress[key] !== undefined) {
+              formattedClient.goals.push({
+                type: name,
+                target: clientData.progress[`${key}Target`] || `Improve ${name}`,
+                progress: typeof clientData.progress[key] === 'number' 
+                  ? clientData.progress[key] 
+                  : parseFloat(clientData.progress[key]) || 0,
+                deadline: clientData.progress[`${key}Deadline`] || ''
+              });
+            }
+          });
+        }
+        
+        // If no goals found, add default goals
+        if (formattedClient.goals.length === 0) {
+          formattedClient.goals = [
+            {
+              type: 'Weight Loss',
+              target: 'Lose weight',
+              progress: 0,
+              deadline: ''
+            },
+            {
+              type: 'Strength',
+              target: 'Improve strength',
+              progress: 0,
+              deadline: ''
+            },
+            {
+              type: 'Cardio',
+              target: 'Improve cardio',
+              progress: 0,
+              deadline: ''
+            }
+          ];
+        }
+        
+        // Get client measurements
+        if (clientData.measurements && Array.isArray(clientData.measurements)) {
+          formattedClient.measurements = clientData.measurements.map((measurement: any) => ({
+            date: measurement.date || '',
+            weight: measurement.weight || 0,
+            bodyFat: measurement.bodyFat,
+            muscleMass: measurement.muscleMass
+          }));
+        }
+        
+        // Get client's program
+        if (clientData.programId) {
+          const programRef = doc(db, 'programs', clientData.programId);
+          const programDoc = await getDoc(programRef);
+          
+          if (programDoc.exists()) {
+            const programData = programDoc.data();
+            
+            formattedClient.currentProgram = {
+              name: programData.name || '',
+              startDate: programData.startDate ? new Date(programData.startDate.toDate()).toISOString().split('T')[0] : '',
+              completionRate: programData.completionRate || 0,
+              nextSession: ''
+            };
+          }
+        }
+        
+        // Get upcoming session
+        const sessionsQuery = query(
+          collection(db, 'sessions'),
+          where('clientId', '==', clientId),
+          where('completed', '==', false),
+          where('date', '>=', new Date()),
+          orderBy('date', 'asc'),
+          limit(1)
+        );
+        
+        const sessionsSnapshot = await getDocs(sessionsQuery);
+        
+        if (!sessionsSnapshot.empty) {
+          const sessionData = sessionsSnapshot.docs[0].data();
+          
+          if (sessionData.date) {
+            const sessionDate = new Date(sessionData.date.toDate());
+            formattedClient.currentProgram.nextSession = sessionDate.toISOString();
+          }
+        }
+        
+        // Get recent activity
+        const activityQuery = query(
+          collection(db, 'activity'),
+          where('relatedId', '==', clientId),
+          orderBy('timestamp', 'desc'),
+          limit(5)
+        );
+        
+        const activitySnapshot = await getDocs(activityQuery);
+        
+        if (!activitySnapshot.empty) {
+          formattedClient.recentActivity = activitySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              type: data.type || '',
+              description: data.message || '',
+              date: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : ''
+            };
+          });
+        }
+        
+        setClient(formattedClient);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching client data:', err);
+        setError('Failed to load client data');
+        setLoading(false);
+      }
+    };
+    
+    fetchClientData();
+  }, [clientId, user]);
 
   // Dummy schedule data - replace with Firestore data later
   const schedule: ClientSchedule = {

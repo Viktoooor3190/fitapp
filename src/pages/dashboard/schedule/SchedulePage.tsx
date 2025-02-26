@@ -206,76 +206,76 @@ const SchedulePage = () => {
 
       {/* Calendar Navigation */}
       {!loading && (
-        <motion.div 
-          className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6"
-          variants={fadeInUp}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-4">
-              <button
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+      <motion.div 
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6"
+        variants={fadeInUp}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-4">
+            <button
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 onClick={navigatePrevious}
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {view === 'day' 
                   ? formatDateHeader(selectedDate)
                   : `Week of ${format(daysOfWeek[0], 'MMM d')} - ${format(daysOfWeek[6], 'MMM d, yyyy')}`
                 }
-              </h2>
-              <button
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            </h2>
+            <button
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 onClick={navigateNext}
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                view === 'day'
+                  ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+              onClick={() => setView('day')}
+            >
+              Day
+            </button>
+            <button
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                view === 'week'
+                  ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+              onClick={() => setView('week')}
+            >
+              Week
+            </button>
+          </div>
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="grid grid-cols-8 gap-px bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
+          {/* Time Column */}
+          <div className="bg-white dark:bg-gray-800">
+            <div className="h-12"></div> {/* Empty cell for alignment */}
+            {timeSlots.map((time) => (
+              <div
+                key={time}
+                className="h-20 p-2 text-sm text-gray-500 dark:text-gray-400"
               >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  view === 'day'
-                    ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-                onClick={() => setView('day')}
-              >
-                Day
-              </button>
-              <button
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  view === 'week'
-                    ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-                onClick={() => setView('week')}
-              >
-                Week
-              </button>
-            </div>
+                {time}
+              </div>
+            ))}
           </div>
 
-          {/* Calendar Grid */}
-          <div className="grid grid-cols-8 gap-px bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
-            {/* Time Column */}
-            <div className="bg-white dark:bg-gray-800">
-              <div className="h-12"></div> {/* Empty cell for alignment */}
-              {timeSlots.map((time) => (
-                <div
-                  key={time}
-                  className="h-20 p-2 text-sm text-gray-500 dark:text-gray-400"
-                >
-                  {time}
-                </div>
-              ))}
-            </div>
-
-            {/* Days Columns */}
+          {/* Days Columns */}
             {view === 'week' ? (
               // Week View
               daysOfWeek.map((day, index) => (
                 <div key={index} className="bg-white dark:bg-gray-800">
-                  <div className="h-12 flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
+              <div className="h-12 flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
                     <div className="text-center">
                       <div className="text-xs text-gray-500 dark:text-gray-400">
                         {format(day, 'EEE')}
@@ -288,21 +288,21 @@ const SchedulePage = () => {
                         {format(day, 'd')}
                       </div>
                     </div>
-                  </div>
+              </div>
                   {timeSlots.map((time) => {
                     const sessionsAtTime = getSessionsForTimeSlot(day, time);
                     return (
-                      <div
+                <div
                         key={`${index}-${time}`}
-                        className="h-20 border-b border-gray-200 dark:border-gray-700 relative"
-                      >
+                  className="h-20 border-b border-gray-200 dark:border-gray-700 relative"
+                >
                         {sessionsAtTime.map((session) => (
-                          <motion.div
+                      <motion.div
                             key={session.id}
-                            variants={slideIn}
-                            initial="initial"
-                            animate="animate"
-                            exit="exit"
+                        variants={slideIn}
+                        initial="initial"
+                        animate="animate"
+                        exit="exit"
                             className={`absolute inset-x-1 top-1 p-2 rounded-lg cursor-pointer ${
                               session.status === 'cancelled'
                                 ? 'bg-red-100 dark:bg-red-900/20'
@@ -313,8 +313,8 @@ const SchedulePage = () => {
                                 : 'bg-blue-100 dark:bg-blue-900/20'
                             }`}
                             onClick={() => openEditModal(session)}
-                          >
-                            <div className="flex items-center justify-between">
+                      >
+                        <div className="flex items-center justify-between">
                               <span className={`text-sm font-medium ${
                                 session.status === 'cancelled'
                                   ? 'text-red-600 dark:text-red-400'
@@ -325,17 +325,17 @@ const SchedulePage = () => {
                                   : 'text-blue-600 dark:text-blue-400'
                               }`}>
                                 {session.clientName}
-                              </span>
+                          </span>
                               {session.type === 'virtual' ? (
-                                <Video className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                              ) : (
-                                <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                              )}
-                            </div>
-                            <span className="text-xs text-blue-500 dark:text-blue-300">
+                            <Video className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          ) : (
+                            <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          )}
+                        </div>
+                        <span className="text-xs text-blue-500 dark:text-blue-300">
                               {session.time} ({session.duration}min)
-                            </span>
-                          </motion.div>
+                        </span>
+                      </motion.div>
                         ))}
                       </div>
                     );
@@ -549,10 +549,10 @@ const SchedulePage = () => {
                     </button>
                   </div>
                 )}
-              </div>
-            ))}
-          </div>
-        </motion.div>
+            </div>
+          ))}
+        </div>
+      </motion.div>
       )}
 
       {/* Empty State */}

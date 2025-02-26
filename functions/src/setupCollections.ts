@@ -13,21 +13,6 @@ export const setupUserCollections = onDocumentCreated('coaches/{userId}', async 
     // Create a batch to perform all writes atomically
     const batch = db.batch();
     
-    // Create a sample client document (empty/template)
-    const clientsRef = db.collection('clients').doc(`template_${uid}`);
-    batch.set(clientsRef, {
-      coachId: uid,
-      name: "Template Client",
-      email: "",
-      phone: "",
-      status: "template",
-      programId: "",
-      progress: {},
-      upcomingSessions: [],
-      lastActive: timestamp,
-      isTemplate: true  // Flag to identify this as a template
-    });
-    
     // Create a sample program document (empty/template)
     const programsRef = db.collection('programs').doc(`template_${uid}`);
     batch.set(programsRef, {
@@ -63,7 +48,7 @@ export const setupUserCollections = onDocumentCreated('coaches/{userId}', async 
     const sessionsRef = db.collection('sessions').doc(`template_${uid}`);
     batch.set(sessionsRef, {
       coachId: uid,
-      clientId: `template_${uid}`,
+      clientId: "", // No specific client reference
       date: "",
       time: "",
       type: "Training",
@@ -77,7 +62,7 @@ export const setupUserCollections = onDocumentCreated('coaches/{userId}', async 
     const messagesRef = db.collection('messages').doc(`template_${uid}`);
     batch.set(messagesRef, {
       coachId: uid,
-      clientId: `template_${uid}`,
+      clientId: "", // No specific client reference
       messages: [
         {
           sender: "system",
@@ -94,7 +79,7 @@ export const setupUserCollections = onDocumentCreated('coaches/{userId}', async 
     const revenueRef = db.collection('revenue').doc(`template_${uid}`);
     batch.set(revenueRef, {
       coachId: uid,
-      clientId: `template_${uid}`,
+      clientId: "", // No specific client reference
       amount: 0,
       date: timestamp,
       status: "Template",

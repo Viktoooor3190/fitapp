@@ -32,7 +32,11 @@ export const useClientStats = () => {
 
     // Create a query for clients belonging to the current coach
     const clientsRef = collection(db, 'clients');
-    const clientsQuery = query(clientsRef, where('coachId', '==', user.uid));
+    const clientsQuery = query(
+      clientsRef, 
+      where('coachId', '==', user.uid),
+      where('isTemplate', '!=', true) // Exclude template clients
+    );
 
     // Set up real-time listener for clients
     const unsubscribe = onSnapshot(
@@ -51,6 +55,12 @@ export const useClientStats = () => {
 
           snapshot.forEach((doc) => {
             const clientData = doc.data();
+            
+            // Skip placeholder documents
+            if (clientData.placeholder === true) {
+              return;
+            }
+            
             totalClients++;
 
             // Check if client was created in the last week
