@@ -12,7 +12,8 @@
     "types:supabase": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/supabase.ts",
     "start": "react-scripts start",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "test:subdomains": "node scripts/test-subdomains.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.6.0",

@@ -29,7 +29,15 @@ export default defineConfig({
     },
   },
   server: {
+    host: "localhost",
+    port: 3000,
+    strictPort: true,
+    // This allows any hostname to access the dev server
+    // including our custom subdomains like coach1.localhost
+    hmr: {
+      host: "localhost"
+    },
     // @ts-ignore
-    allowedHosts: true,
+    allowedHosts: "all",
   }
 });
