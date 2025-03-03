@@ -25,13 +25,15 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize services
 const auth = getAuth(app);
-const db = getFirestore(app);
+const firestore = getFirestore(app);
 const functions = getFunctions(app);
 
 // Connect to emulators in development
 if (import.meta.env.DEV) {
   connectAuthEmulator(auth, 'http://localhost:9099');
-  connectFirestoreEmulator(db, 'localhost', 8080);
+  connectFirestoreEmulator(firestore, 'localhost', 8080);
 }
 
-export { auth, db, functions }; 
+// Export both firestore and db (for backward compatibility)
+export { auth, firestore, functions };
+export { firestore as db }; 

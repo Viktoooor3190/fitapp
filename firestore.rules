@@ -6,81 +6,86 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    function isUserAuthenticated(userId) {
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
     function isCoach() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach';
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach';
     }
     
-    match /coaches/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
-    }
-    
-    match /clients/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
-    }
-    
+    // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isUserAuthenticated(userId);
-    }
-    
-    match /transactions/{transactionId} {
-      allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;
-      allow create: if isAuthenticated() && request.resource.data.coachId == request.auth.uid;
-      allow update: if isAuthenticated() && resource.data.coachId == request.auth.uid;
-      allow delete: if isAuthenticated() && resource.data.coachId == request.auth.uid;
-    }
-    
-    match /revenueStats/{statsId} {
-      allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;
-      allow write: if isAuthenticated() && request.resource.data.coachId == request.auth.uid;
-    }
-    
-    match /reports/{reportId} {
-      allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;
-      // Only cloud functions can write to reports
-      allow write: if false;
-    }
-    
-    match /activity/{activityId} {
-      // Only allow coaches to read their own activity
-      allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+      // Users can read and update their own data
+      // Admins can read and write all user data
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
       
-      // Allow cloud functions to create activity records
-      // Regular users cannot directly create/update/delete activity records
-      allow create: if false; // Only cloud functions can create
-      allow update: if false; // No updates allowed
-      allow delete: if false; // No deletions allowed
+      // Subcollections
+      match /clients/{clientId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+      
+      match /programs/{programId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
     
-    match /programs/{programId} {
-      allow read: if isAuthenticated() && resource.data.coachId == request.auth.uid;
-      allow create: if isAuthenticated() && request.resource.data.coachId == request.auth.uid;
-      allow update: if isAuthenticated() && resource.data.coachId == request.auth.uid;
-      allow delete: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+    // Subdomains collection
+    match /subdomains/{subdomain} {
+      // Anyone can read subdomain data (needed for subdomain resolution)
+      // Only the owner or admin can update or delete
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && 
+        (request.auth.uid == resource.data.userId || isAdmin());
+      
+      // Validate subdomain format on create and update
+      allow create, update: if 
+        // Must start with 'coach'
+        request.resource.data.subdomain.matches('^coach[a-z0-9-]*$') &&
+        // Length between 5 and 30 characters
+        request.resource.data.subdomain.size() >= 5 && 
+        request.resource.data.subdomain.size() <= 30 &&
+        // Must include userId
+        request.resource.data.userId is string;
     }
     
-    match /sessions/{sessionId} {
-      // Allow coaches to access their sessions
-      // Allow clients to access sessions they're part of
-      allow read: if isAuthenticated() && 
-        (resource.data.coachId == request.auth.uid || resource.data.clientId == request.auth.uid);
+    // Coaches collection
+    match /coaches/{coachId} {
+      allow read: if true;
+      allow create, update: if isOwner(coachId) || isAdmin();
+      allow delete: if isAdmin();
       
-      // Allow coaches to create sessions
-      allow create: if isAuthenticated() && request.resource.data.coachId == request.auth.uid;
+      // Coach profile is public
+      match /profile/{document=**} {
+        allow read: if true;
+        allow write: if isOwner(coachId) || isAdmin();
+      }
       
-      // Allow coaches to update their sessions
-      // Allow clients to update sessions they're part of (for requesting sessions)
-      allow update: if isAuthenticated() && 
-        (resource.data.coachId == request.auth.uid || resource.data.clientId == request.auth.uid);
+      // Coach services are public
+      match /services/{document=**} {
+        allow read: if true;
+        allow write: if isOwner(coachId) || isAdmin();
+      }
       
-      // Only coaches can delete sessions
-      allow delete: if isAuthenticated() && resource.data.coachId == request.auth.uid;
+      // Coach clients are private
+      match /clients/{document=**} {
+        allow read, write: if isOwner(coachId) || isAdmin();
+      }
+    }
+    
+    // Other collections...
+    match /{document=**} {
+      allow read, write: if isAdmin();
     }
   }
 } 

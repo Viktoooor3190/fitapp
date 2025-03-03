@@ -47,9 +47,27 @@
     "pubsub": {
       "port": 8085
     },
+    "storage": {
+      "port": 9199
+    },
     "ui": {
-      "enabled": true,
-      "port": 4000
+      "enabled": true
+    },
+    "singleProjectMode": true
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": {
+      "indexes": [
+        {
+          "collectionGroup": "coaches",
+          "queryScope": "COLLECTION",
+          "fields": [
+            { "fieldPath": "subdomain", "order": "ASCENDING" },
+            { "fieldPath": "active", "order": "ASCENDING" }
+          ]
+        }
+      ]
     }
   }
 }

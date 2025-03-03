@@ -28,3 +28,53 @@ export default {
 - Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
 - Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
 - Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+
+## Subdomain Support
+
+This application supports coach-specific subdomains (e.g., `coach1.localhost:3000`) to provide customized experiences based on the coach.
+
+### Setting Up Local Subdomain Testing
+
+1. **Edit your hosts file**:
+   - On Windows: `C:\Windows\System32\drivers\etc\hosts`
+   - On Mac/Linux: `/etc/hosts`
+
+   Add the following entries:
+   ```
+   127.0.0.1    localhost
+   127.0.0.1    coach1.localhost
+   127.0.0.1    coach2.localhost
+   ```
+
+2. **Run the development server with subdomain support**:
+   ```
+   npm run dev:subdomains
+   ```
+
+   This will open a menu to help you test different subdomains.
+
+### How Subdomains Work
+
+- When a user visits a coach subdomain (e.g., `coach1.yourdomain.com`), the application automatically loads the coach's context.
+- The subdomain is parsed and used to fetch the coach's data from Firestore.
+- The coach's data is then made available throughout the application via the `SubdomainContext`.
+
+### Using Subdomain Context in Components
+
+```tsx
+import { useSubdomain } from '../contexts/SubdomainContext';
+
+const MyComponent = () => {
+  const { subdomain, coachId, coachData, isCoachDomain } = useSubdomain();
+  
+  if (isCoachDomain) {
+    return <div>Welcome to {coachData?.name}'s page!</div>;
+  }
+  
+  return <div>Welcome to the main site!</div>;
+};
+```
+
+### Firestore Structure
+
+Coaches are stored in the `coaches` collection with a `subdomain` field that maps to their custom subdomain.

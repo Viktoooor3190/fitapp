@@ -13,7 +13,8 @@
     "start": "react-scripts start",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "test:subdomains": "node scripts/test-subdomains.js"
+    "test:subdomains": "node scripts/test-subdomains.js",
+    "dev:subdomains": "npm run test:subdomains && npm run dev"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.6.0",
