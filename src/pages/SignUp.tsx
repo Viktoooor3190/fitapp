@@ -96,6 +96,7 @@ const SignUp = () => {
     try {
       // Generate a unique subdomain from business name
       const subdomain = await generateUniqueSubdomain(formData.businessName);
+      console.log("[SignUp] Generated unique subdomain:", subdomain);
 
       // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
@@ -109,8 +110,11 @@ const SignUp = () => {
         displayName: formData.name
       });
 
+      const userId = userCredential.user.uid;
+      console.log("[SignUp] Created user with ID:", userId);
+
       // Create coach document
-      const coachRef = doc(db, 'coaches', userCredential.user.uid);
+      const coachRef = doc(db, 'coaches', userId);
       await setDoc(coachRef, {
         name: formData.name,
         businessName: formData.businessName,
@@ -130,8 +134,10 @@ const SignUp = () => {
         subdomain: subdomain // Add subdomain to coach document
       });
       
+      console.log("[SignUp] Created coach document with subdomain:", subdomain);
+      
       // Create user document with role
-      const userRef = doc(firestore, 'users', userCredential.user.uid);
+      const userRef = doc(firestore, 'users', userId);
       
       // First, check if the user document already exists (created by Cloud Function)
       const existingUserDoc = await getDoc(userRef);
@@ -153,7 +159,7 @@ const SignUp = () => {
         
         // Create a new user document
         await setDoc(userRef, {
-          uid: userCredential.user.uid,
+          uid: userId,
           email: formData.email,
           displayName: formData.name,
           subdomain: subdomain,
@@ -198,19 +204,29 @@ const SignUp = () => {
       
       // Create a separate subdomain document for faster lookups
       await setDoc(doc(firestore, 'subdomains', subdomain), {
-        userId: userCredential.user.uid,
+        userId: userId,
         subdomain: subdomain,
         businessName: formData.businessName,
         createdAt: serverTimestamp(),
         isActive: true
       });
       
+      console.log("[SignUp] Created subdomain document:", subdomain);
+      
+      // Verify subdomain document was created correctly
+      const subdomainDoc = await getDoc(doc(firestore, 'subdomains', subdomain));
+      if (subdomainDoc.exists()) {
+        console.log("[SignUp] Verified subdomain document:", subdomainDoc.data());
+      } else {
+        console.error("[SignUp] Failed to verify subdomain document");
+      }
+      
       // Initialize empty collections for the coach (except clients)
-      const programsCollectionRef = doc(db, 'programs', `${userCredential.user.uid}_placeholder`);
-      const sessionsCollectionRef = doc(db, 'sessions', `${userCredential.user.uid}_placeholder`);
-      const messagesCollectionRef = doc(db, 'messages', `${userCredential.user.uid}_placeholder`);
-      const revenueCollectionRef = doc(db, 'revenue', `${userCredential.user.uid}_placeholder`);
-      const reportsCollectionRef = doc(db, 'reports', `${userCredential.user.uid}_placeholder`);
+      const programsCollectionRef = doc(db, 'programs', `${userId}_placeholder`);
+      const sessionsCollectionRef = doc(db, 'sessions', `${userId}_placeholder`);
+      const messagesCollectionRef = doc(db, 'messages', `${userId}_placeholder`);
+      const revenueCollectionRef = doc(db, 'revenue', `${userId}_placeholder`);
+      const reportsCollectionRef = doc(db, 'reports', userId);
       
       // Create placeholder documents to establish the collections
       await Promise.all([
@@ -219,7 +235,7 @@ const SignUp = () => {
         setDoc(messagesCollectionRef, { placeholder: true }),
         setDoc(revenueCollectionRef, { placeholder: true }),
         setDoc(reportsCollectionRef, { placeholder: true, 
-          coachId: userCredential.user.uid,
+          coachId: userId,
           clientRetentionRate: "0%",
           avgSessionRating: "0/5",
           clientGoalAchievement: "0%",
@@ -233,6 +249,7 @@ const SignUp = () => {
 
       navigate('/dashboard');
     } catch (err) {
+      console.error("[SignUp] Error during signup:", err);
       setError(err instanceof Error ? err.message : 'An error occurred during signup');
     } finally {
       setIsLoading(false);

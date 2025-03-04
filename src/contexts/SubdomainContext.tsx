@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSubdomain } from '../utils/subdomain';
 import { userService } from '../services/userService';
+import { doc, getDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
+import { db, firestore } from '../firebase/config';
 
 // Define the shape of the coach data
 export interface CoachData {
@@ -58,26 +60,65 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (detectedSubdomain) {
           console.log('Fetching coach data for subdomain:', detectedSubdomain);
           
-          // Use the userService to get coach data by subdomain
-          const userData = await userService.getUserBySubdomain(detectedSubdomain);
+          // First, try to get the coach ID from the subdomains collection
+          const subdomainDoc = await getDoc(doc(firestore, 'subdomains', detectedSubdomain));
           
-          if (userData) {
-            console.log('Coach data found:', userData);
-            setCoachId(userData.uid);
-            setCoachData({
-              id: userData.uid,
-              name: userData.displayName,
-              subdomain: userData.subdomain,
-              email: userData.email,
-              profileImage: userData.profileImage,
-              bio: userData.bio,
-              specialties: userData.specialties,
-              active: userData.isActive
-            });
-            setIsCoachDomain(true);
+          if (subdomainDoc.exists()) {
+            const subdomainData = subdomainDoc.data();
+            const userId = subdomainData.userId;
+            console.log('Found subdomain document with userId:', userId);
+            
+            // Get the user document
+            const userDoc = await getDoc(doc(firestore, 'users', userId));
+            
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              console.log('Found user document:', userData);
+              
+              // Get the coach document
+              const coachDoc = await getDoc(doc(db, 'coaches', userId));
+              
+              if (coachDoc.exists()) {
+                const coachData = coachDoc.data();
+                console.log('Found coach document:', coachData);
+                
+                setCoachId(userId);
+                setCoachData({
+                  id: userId,
+                  name: userData.displayName || coachData.name || '',
+                  subdomain: detectedSubdomain,
+                  email: userData.email || coachData.email || '',
+                  profileImage: userData.profileImage || coachData.profilePicture || '',
+                  bio: coachData.bio || '',
+                  specialties: coachData.specialties ? coachData.specialties.split(',') : [],
+                  active: userData.isActive || true
+                });
+                setIsCoachDomain(true);
+              } else {
+                // If coach document doesn't exist, try to use just the user data
+                console.log('No coach document found, using user data only');
+                setCoachId(userId);
+                setCoachData({
+                  id: userId,
+                  name: userData.displayName || '',
+                  subdomain: detectedSubdomain,
+                  email: userData.email || '',
+                  profileImage: userData.profileImage || '',
+                  bio: '',
+                  specialties: [],
+                  active: userData.isActive || true
+                });
+                setIsCoachDomain(true);
+              }
+            } else {
+              // If user document doesn't exist, try to find coach by subdomain directly
+              console.log('No user document found, trying to find coach by subdomain directly');
+              await findCoachBySubdomain(detectedSubdomain);
+            }
           } else {
-            console.log('No coach found for subdomain:', detectedSubdomain);
-            setError(`No coach found for subdomain: ${detectedSubdomain}`);
+            // If subdomain document doesn't exist, try to find coach by subdomain directly
+            console.log('No subdomain document found, trying to find coach by subdomain directly');
+            await findCoachBySubdomain(detectedSubdomain);
           }
         }
       } catch (err) {
@@ -88,6 +129,47 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setTimeout(() => {
           setLoading(false);
         }, 1000);
+      }
+    };
+
+    // Helper function to find coach by subdomain directly in coaches collection
+    const findCoachBySubdomain = async (subdomain: string) => {
+      try {
+        // Query coaches collection for the subdomain
+        const coachesQuery = query(
+          collection(db, 'coaches'),
+          where('subdomain', '==', subdomain),
+          limit(1)
+        );
+        
+        const coachSnapshot = await getDocs(coachesQuery);
+        
+        if (!coachSnapshot.empty) {
+          const coachDoc = coachSnapshot.docs[0];
+          const coachId = coachDoc.id;
+          const coachData = coachDoc.data();
+          
+          console.log('Found coach by subdomain query:', coachData);
+          
+          setCoachId(coachId);
+          setCoachData({
+            id: coachId,
+            name: coachData.name || '',
+            subdomain: subdomain,
+            email: coachData.email || '',
+            profileImage: coachData.profilePicture || '',
+            bio: coachData.bio || '',
+            specialties: coachData.specialties ? coachData.specialties.split(',') : [],
+            active: true
+          });
+          setIsCoachDomain(true);
+        } else {
+          console.log('No coach found for subdomain:', subdomain);
+          setError(`No coach found for subdomain: ${subdomain}`);
+        }
+      } catch (err) {
+        console.error('Error finding coach by subdomain:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error');
       }
     };
 
