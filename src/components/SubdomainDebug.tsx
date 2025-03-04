@@ -23,7 +23,7 @@ export const SubdomainDebug = () => {
     });
     
     // Check if we're using the CoachSubdomainHandler
-    if (isCoachSubdomain && !subdomain) {
+    if (isCoachSubdomain) {
       setIsUsingCoachHandler(true);
     }
   }, [subdomain, coachId, isCoachDomain, loading, error, isCoachSubdomain, coachSubdomain]);
@@ -42,7 +42,7 @@ export const SubdomainDebug = () => {
     <div className="fixed bottom-4 right-4 bg-black/80 text-white p-4 rounded-lg text-sm font-mono z-50 max-w-md overflow-auto max-h-96">
       <div className="font-bold mb-2">Subdomain Debug</div>
       <div>Status: {loading ? 'Loading...' : 'Ready'}</div>
-      <div>Subdomain: {subdomain || 'none'}</div>
+      <div>Subdomain: {subdomain || (isUsingCoachHandler ? coachSubdomain : 'none')}</div>
       <div>Coach ID: {coachId || (isUsingCoachHandler ? `Using ${coachSubdomain} Handler` : 'none')}</div>
       <div>Is Coach Domain: {isCoachDomain || isUsingCoachHandler ? 'yes' : 'no'}</div>
       <div>Hostname: {window.location.hostname}</div>
@@ -52,12 +52,12 @@ export const SubdomainDebug = () => {
       
       {isUsingCoachHandler && (
         <div className="mt-2 text-green-300">
-          <div>✅ Using {coachSubdomain} Handler workaround</div>
-          <div>The main subdomain detection failed, but we're using a special handler for {coachSubdomain}.localhost</div>
+          <div>✅ Using {coachSubdomain} Handler Active</div>
+          <div>The handler for {coachSubdomain}.localhost is active and working</div>
         </div>
       )}
       
-      {!subdomain && window.location.hostname === 'localhost' && (
+      {!subdomain && !isUsingCoachHandler && window.location.hostname === 'localhost' && (
         <div className="mt-2 text-yellow-300">
           <div>No subdomain detected. To test with a subdomain:</div>
           <div className="mt-1">• Use coach1.localhost:3000 instead of localhost:3000</div>

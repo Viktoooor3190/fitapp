@@ -1,0 +1,30 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      // Allow authentication operations regardless of subdomain
+      match /auth/{authFiles=**} {
+        allow read, write: if true;
+      }
+      
+      // By default, deny all reads and writes
+      allow read, write: if false;
+      
+      // Allow authenticated users to read and write their own files
+      match /users/{userId}/{allUserFiles=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Allow coaches to access their own files
+      match /coaches/{coachId}/{allCoachFiles=**} {
+        allow read, write: if request.auth != null && request.auth.uid == coachId;
+      }
+      
+      // Allow public access to certain files (if needed)
+      match /public/{publicFile=**} {
+        allow read: if true;
+        allow write: if false;
+      }
+    }
+  }
+} 

@@ -197,18 +197,44 @@ const ClientSignUp = () => {
 
       // Add client to coach's clients array if there's a coach ID
       if (effectiveCoachId) {
-        const coachRef = doc(db, 'coaches', effectiveCoachId);
-        
-        // Check if coach document exists
-        const coachDoc = await getDoc(coachRef);
-        if (coachDoc.exists()) {
-          console.log("[ClientSignUp] Coach document exists:", coachDoc.data());
-          await updateDoc(coachRef, {
-            clients: arrayUnion(userCredential.user.uid)
-          });
-          console.log("[ClientSignUp] Added client to coach's clients array:", effectiveCoachId);
-        } else {
-          console.error("[ClientSignUp] Coach document does not exist for ID:", effectiveCoachId);
+        try {
+          const coachRef = doc(db, 'coaches', effectiveCoachId);
+          
+          // Check if coach document exists
+          const coachDoc = await getDoc(coachRef);
+          if (coachDoc.exists()) {
+            console.log("[ClientSignUp] Coach document exists:", coachDoc.data());
+            
+            // Get current clients array or initialize empty array
+            const currentClients = coachDoc.data().clients || [];
+            
+            // Only update if client is not already in the array
+            if (!currentClients.includes(userCredential.user.uid)) {
+              await updateDoc(coachRef, {
+                clients: arrayUnion(userCredential.user.uid)
+              });
+              console.log("[ClientSignUp] Added client to coach's clients array:", effectiveCoachId);
+            } else {
+              console.log("[ClientSignUp] Client already in coach's clients array");
+            }
+          } else {
+            console.error("[ClientSignUp] Coach document does not exist for ID:", effectiveCoachId);
+            
+            // Create a minimal coach document if it doesn't exist (for development)
+            if (process.env.NODE_ENV === 'development') {
+              console.log("[ClientSignUp] Creating minimal coach document for development");
+              await setDoc(coachRef, {
+                name: `Coach ${effectiveCoachId}`,
+                email: `coach-${effectiveCoachId}@example.com`,
+                subdomain: effectiveSubdomain,
+                clients: [userCredential.user.uid],
+                createdAt: serverTimestamp()
+              });
+            }
+          }
+        } catch (err) {
+          console.error("[ClientSignUp] Error updating coach document:", err);
+          // Continue with registration even if coach update fails
         }
       } else {
         console.warn("[ClientSignUp] No coach ID available, client not linked to any coach");
@@ -320,11 +346,45 @@ const ClientSignUp = () => {
 
         // Add client to coach's clients array if there's a coach ID
         if (effectiveCoachId) {
-          const coachRef = doc(db, 'coaches', effectiveCoachId);
-          await updateDoc(coachRef, {
-            clients: arrayUnion(result.user.uid)
-          });
-          console.log("[ClientSignUp] Added client to coach's clients array:", effectiveCoachId);
+          try {
+            const coachRef = doc(db, 'coaches', effectiveCoachId);
+            
+            // Check if coach document exists
+            const coachDoc = await getDoc(coachRef);
+            if (coachDoc.exists()) {
+              console.log("[ClientSignUp] Coach document exists:", coachDoc.data());
+              
+              // Get current clients array or initialize empty array
+              const currentClients = coachDoc.data().clients || [];
+              
+              // Only update if client is not already in the array
+              if (!currentClients.includes(result.user.uid)) {
+                await updateDoc(coachRef, {
+                  clients: arrayUnion(result.user.uid)
+                });
+                console.log("[ClientSignUp] Added client to coach's clients array:", effectiveCoachId);
+              } else {
+                console.log("[ClientSignUp] Client already in coach's clients array");
+              }
+            } else {
+              console.error("[ClientSignUp] Coach document does not exist for ID:", effectiveCoachId);
+              
+              // Create a minimal coach document if it doesn't exist (for development)
+              if (process.env.NODE_ENV === 'development') {
+                console.log("[ClientSignUp] Creating minimal coach document for development");
+                await setDoc(coachRef, {
+                  name: `Coach ${effectiveCoachId}`,
+                  email: `coach-${effectiveCoachId}@example.com`,
+                  subdomain: effectiveSubdomain,
+                  clients: [result.user.uid],
+                  createdAt: serverTimestamp()
+                });
+              }
+            }
+          } catch (err) {
+            console.error("[ClientSignUp] Error updating coach document:", err);
+            // Continue with registration even if coach update fails
+          }
         } else {
           console.warn("[ClientSignUp] No coach ID available, client not linked to any coach");
         }

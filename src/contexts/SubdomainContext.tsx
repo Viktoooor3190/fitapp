@@ -53,12 +53,12 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         // Get the subdomain from the URL
         const detectedSubdomain = getSubdomain();
-        console.log('Detected subdomain:', detectedSubdomain);
+        console.log('[SubdomainContext] Detected subdomain:', detectedSubdomain);
         setSubdomain(detectedSubdomain);
 
         // If there's a subdomain, fetch the coach data
         if (detectedSubdomain) {
-          console.log('Fetching coach data for subdomain:', detectedSubdomain);
+          console.log('[SubdomainContext] Fetching coach data for subdomain:', detectedSubdomain);
           
           // First, try to get the coach ID from the subdomains collection
           const subdomainDoc = await getDoc(doc(firestore, 'subdomains', detectedSubdomain));
@@ -66,21 +66,21 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (subdomainDoc.exists()) {
             const subdomainData = subdomainDoc.data();
             const userId = subdomainData.userId;
-            console.log('Found subdomain document with userId:', userId);
+            console.log('[SubdomainContext] Found subdomain document with userId:', userId);
             
             // Get the user document
             const userDoc = await getDoc(doc(firestore, 'users', userId));
             
             if (userDoc.exists()) {
               const userData = userDoc.data();
-              console.log('Found user document:', userData);
+              console.log('[SubdomainContext] Found user document:', userData);
               
               // Get the coach document
               const coachDoc = await getDoc(doc(db, 'coaches', userId));
               
               if (coachDoc.exists()) {
                 const coachData = coachDoc.data();
-                console.log('Found coach document:', coachData);
+                console.log('[SubdomainContext] Found coach document:', coachData);
                 
                 setCoachId(userId);
                 setCoachData({
@@ -94,9 +94,10 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   active: userData.isActive || true
                 });
                 setIsCoachDomain(true);
+                console.log('[SubdomainContext] Successfully set coach data with ID:', userId);
               } else {
                 // If coach document doesn't exist, try to use just the user data
-                console.log('No coach document found, using user data only');
+                console.log('[SubdomainContext] No coach document found, using user data only');
                 setCoachId(userId);
                 setCoachData({
                   id: userId,
@@ -109,25 +110,34 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   active: userData.isActive || true
                 });
                 setIsCoachDomain(true);
+                console.log('[SubdomainContext] Successfully set coach data from user document with ID:', userId);
               }
             } else {
               // If user document doesn't exist, try to find coach by subdomain directly
-              console.log('No user document found, trying to find coach by subdomain directly');
+              console.log('[SubdomainContext] No user document found, trying to find coach by subdomain directly');
               await findCoachBySubdomain(detectedSubdomain);
             }
           } else {
             // If subdomain document doesn't exist, try to find coach by subdomain directly
-            console.log('No subdomain document found, trying to find coach by subdomain directly');
+            console.log('[SubdomainContext] No subdomain document found, trying to find coach by subdomain directly');
             await findCoachBySubdomain(detectedSubdomain);
           }
+        } else {
+          console.log('[SubdomainContext] No subdomain detected, not setting coach data');
         }
       } catch (err) {
-        console.error('Error initializing subdomain:', err);
+        console.error('[SubdomainContext] Error initializing subdomain:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         // Ensure loading state is completed after a brief period
         setTimeout(() => {
           setLoading(false);
+          console.log('[SubdomainContext] Final state:', { 
+            subdomain, 
+            coachId, 
+            isCoachDomain, 
+            hasCoachData: !!coachData 
+          });
         }, 1000);
       }
     };
@@ -135,6 +145,8 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Helper function to find coach by subdomain directly in coaches collection
     const findCoachBySubdomain = async (subdomain: string) => {
       try {
+        console.log('[SubdomainContext] Searching for coach with subdomain:', subdomain);
+        
         // Query coaches collection for the subdomain
         const coachesQuery = query(
           collection(db, 'coaches'),
@@ -149,7 +161,7 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const coachId = coachDoc.id;
           const coachData = coachDoc.data();
           
-          console.log('Found coach by subdomain query:', coachData);
+          console.log('[SubdomainContext] Found coach by subdomain query:', coachData);
           
           setCoachId(coachId);
           setCoachData({
@@ -163,18 +175,98 @@ export const SubdomainProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             active: true
           });
           setIsCoachDomain(true);
+          console.log('[SubdomainContext] Successfully set coach data from coaches collection with ID:', coachId);
         } else {
-          console.log('No coach found for subdomain:', subdomain);
-          setError(`No coach found for subdomain: ${subdomain}`);
+          console.log('[SubdomainContext] No coach found for subdomain:', subdomain);
+          
+          // Try a more flexible search - maybe the subdomain is stored differently
+          const flexibleQuery = query(
+            collection(db, 'coaches'),
+            where('subdomain', '>=', subdomain.substring(0, 5)),
+            limit(10)
+          );
+          
+          const flexibleSnapshot = await getDocs(flexibleQuery);
+          console.log(`[SubdomainContext] Flexible search found ${flexibleSnapshot.size} potential matches`);
+          
+          // Log all potential matches for debugging
+          flexibleSnapshot.forEach(doc => {
+            console.log(`[SubdomainContext] Potential match: id=${doc.id}, subdomain=${doc.data().subdomain}`);
+          });
+          
+          // Find a close match
+          const closeMatch = flexibleSnapshot.docs.find(doc => 
+            doc.data().subdomain && doc.data().subdomain.includes(subdomain.substring(0, 5))
+          );
+          
+          if (closeMatch) {
+            const coachId = closeMatch.id;
+            const coachData = closeMatch.data();
+            
+            console.log('[SubdomainContext] Found close match by flexible search:', coachData);
+            
+            setCoachId(coachId);
+            setCoachData({
+              id: coachId,
+              name: coachData.name || '',
+              subdomain: coachData.subdomain,
+              email: coachData.email || '',
+              profileImage: coachData.profilePicture || '',
+              bio: coachData.bio || '',
+              specialties: coachData.specialties ? coachData.specialties.split(',') : [],
+              active: true
+            });
+            setIsCoachDomain(true);
+            console.log('[SubdomainContext] Successfully set coach data from flexible search with ID:', coachId);
+          } else {
+            // As a last resort, check if there's a coach with a matching business name
+            const businessNameQuery = query(
+              collection(db, 'coaches'),
+              where('businessName', '==', subdomain),
+              limit(1)
+            );
+            
+            const businessNameSnapshot = await getDocs(businessNameQuery);
+            
+            if (!businessNameSnapshot.empty) {
+              const coachDoc = businessNameSnapshot.docs[0];
+              const coachId = coachDoc.id;
+              const coachData = coachDoc.data();
+              
+              console.log('[SubdomainContext] Found coach by business name:', coachData);
+              
+              setCoachId(coachId);
+              setCoachData({
+                id: coachId,
+                name: coachData.name || '',
+                subdomain: subdomain,
+                email: coachData.email || '',
+                profileImage: coachData.profilePicture || '',
+                bio: coachData.bio || '',
+                specialties: coachData.specialties ? coachData.specialties.split(',') : [],
+                active: true
+              });
+              setIsCoachDomain(true);
+              console.log('[SubdomainContext] Successfully set coach data from business name with ID:', coachId);
+            } else {
+              console.log('[SubdomainContext] No coach found for subdomain or business name:', subdomain);
+              setError(`No coach found for subdomain: ${subdomain}`);
+            }
+          }
         }
       } catch (err) {
-        console.error('Error finding coach by subdomain:', err);
+        console.error('[SubdomainContext] Error finding coach by subdomain:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
       }
     };
 
     initializeSubdomain();
   }, []);
+
+  // Log whenever coachId changes
+  useEffect(() => {
+    console.log('[SubdomainContext] Coach ID updated:', coachId);
+  }, [coachId]);
 
   // The value that will be provided to consumers of this context
   const value: SubdomainContextType = {

@@ -20,6 +20,11 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach';
     }
     
+    // Authentication related collections - always allow access
+    match /auth/{document=**} {
+      allow read, write: if true;
+    }
+    
     // Users collection
     match /users/{userId} {
       // Users can read and update their own data
@@ -61,8 +66,17 @@ service cloud.firestore {
     
     // Coaches collection
     match /coaches/{coachId} {
+      // Allow read access to everyone
       allow read: if true;
-      allow create, update: if isOwner(coachId) || isAdmin();
+      
+      // Allow create and update by the coach or admin
+      allow create: if isOwner(coachId) || isAdmin();
+      
+      // Allow updates by the coach, admin, or any authenticated user for client registration
+      allow update: if isOwner(coachId) || isAdmin() || 
+        (isAuthenticated() && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clients']));
+      
       allow delete: if isAdmin();
       
       // Coach profile is public
@@ -81,6 +95,14 @@ service cloud.firestore {
       match /clients/{document=**} {
         allow read, write: if isOwner(coachId) || isAdmin();
       }
+    }
+    
+    // Clients collection
+    match /clients/{clientId} {
+      allow read: if isOwner(clientId) || isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if isOwner(clientId) || isAdmin();
+      allow delete: if isAdmin();
     }
     
     // Other collections...

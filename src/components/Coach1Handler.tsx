@@ -12,15 +12,14 @@ interface CoachSubdomainHandlerProps {
  * by using the useCoachSubdomain hook to detect any coach*.localhost
  */
 export const CoachSubdomainHandler: React.FC<CoachSubdomainHandlerProps> = ({ children }) => {
-  const { isCoachSubdomain, coachSubdomain, isLoading } = useCoachSubdomain();
+  const { isCoachSubdomain, coachSubdomain, isLoading, coachData: coachSubdomainData } = useCoachSubdomain();
   const { subdomain } = useSubdomain();
   
   // Log warning if subdomain detection fails but we're on a coach subdomain
   useEffect(() => {
-    if (isCoachSubdomain && !subdomain && !isLoading) {
-      console.warn(
-        `CoachSubdomainHandler: Main subdomain detection failed, but CoachSubdomainHandler detected ${coachSubdomain}. ` +
-        `Using CoachSubdomainHandler as fallback for ${coachSubdomain}.localhost`
+    if (isCoachSubdomain) {
+      console.log(
+        `CoachSubdomainHandler: Detected ${coachSubdomain}.localhost - Handler is active`
       );
     }
   }, [isCoachSubdomain, coachSubdomain, subdomain, isLoading]);

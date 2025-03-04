@@ -12,7 +12,7 @@ export const useCoachSubdomain = () => {
     // Extract the subdomain from the hostname
     const hostname = window.location.hostname;
     
-    // Check if we're on a coach subdomain (e.g., coach1.localhost, coach2.localhost)
+    // Check if we're on a coach subdomain (e.g., coach1.localhost, coach2.localhost, coach-milos.localhost)
     const isLocalhost = hostname.endsWith('.localhost');
     
     if (isLocalhost) {
@@ -21,6 +21,7 @@ export const useCoachSubdomain = () => {
         const subdomain = parts[0];
         // Check if it starts with 'coach'
         if (subdomain.startsWith('coach')) {
+          console.log(`[useCoachSubdomain] Detected coach subdomain: ${subdomain}`);
           setCoachSubdomain(subdomain);
         }
       }
@@ -37,9 +38,9 @@ export const useCoachSubdomain = () => {
   // Return mock coach data for the detected coach subdomain
   const coachData = coachSubdomain ? {
     id: `${coachSubdomain}-id`,
-    name: `${coachSubdomain.charAt(0).toUpperCase() + coachSubdomain.slice(1)} Name`,
+    name: formatCoachName(coachSubdomain),
     subdomain: coachSubdomain,
-    email: `${coachSubdomain}@example.com`,
+    email: `${coachSubdomain.replace('-', '.')}@example.com`,
     profileImage: `https://randomuser.me/api/portraits/${coachSubdomain === 'coach1' ? 'men' : 'women'}/1.jpg`,
     bio: "Professional fitness coach with experience in various training methods",
     specialties: ["Weight Loss", "Strength Training", "Nutrition"],
@@ -52,4 +53,32 @@ export const useCoachSubdomain = () => {
     isLoading,
     coachData
   };
-}; 
+};
+
+/**
+ * Helper function to format coach name from subdomain
+ * Handles cases like "coach1" -> "Coach 1" and "coach-milos" -> "Coach Milos"
+ */
+function formatCoachName(subdomain: string): string {
+  // Remove 'coach' prefix
+  let name = subdomain.replace(/^coach/, '');
+  
+  // Handle hyphenated names (e.g., coach-milos -> Milos)
+  if (name.startsWith('-')) {
+    name = name.substring(1); // Remove the leading hyphen
+  }
+  
+  // Capitalize first letter of each word
+  name = name.split('-')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  
+  // Handle numeric names (e.g., coach1 -> Coach 1)
+  if (/^\d+$/.test(name)) {
+    name = `Coach ${name}`;
+  } else {
+    name = `Coach ${name}`;
+  }
+  
+  return name;
+} 
