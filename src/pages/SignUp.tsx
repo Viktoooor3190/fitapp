@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { auth, db } from "../firebase/config";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db, firestore } from "../firebase/config";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, setDoc, serverTimestamp, getDoc, updateDoc } from "firebase/firestore";
 import { motion } from "framer-motion";
 import { Instagram, Globe, Target, Users } from 'lucide-react';
+import { slugify, generateRandomString } from "../utils/stringUtils";
 
 const SignUp = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [subdomain, setSubdomain] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     businessName: '',
@@ -24,6 +26,64 @@ const SignUp = () => {
     agreeToTerms: false
   });
 
+  const generateSubdomain = (businessName: string): string => {
+    // Convert business name to lowercase, remove special chars, replace spaces with hyphens
+    let subdomain = slugify(businessName);
+    
+    // Ensure it starts with 'coach-' if it doesn't already start with 'coach'
+    if (!subdomain.startsWith('coach')) {
+      subdomain = `coach-${subdomain}`;
+    }
+    
+    return subdomain;
+  };
+
+  // Update subdomain preview when business name changes
+  const handleBusinessNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const businessName = e.target.value;
+    setFormData({ ...formData, businessName });
+    
+    if (businessName) {
+      const generatedSubdomain = generateSubdomain(businessName);
+      setSubdomain(generatedSubdomain);
+    } else {
+      setSubdomain('');
+    }
+  };
+
+  // Check if a subdomain is available
+  const checkSubdomainAvailability = async (subdomain: string): Promise<boolean> => {
+    try {
+      // Check if subdomain exists in the subdomains collection
+      const subdomainDoc = await getDoc(doc(firestore, 'subdomains', subdomain));
+      return !subdomainDoc.exists();
+    } catch (error) {
+      console.error('Error checking subdomain availability:', error);
+      throw error;
+    }
+  };
+
+  // Generate a unique subdomain by adding a random suffix if needed
+  const generateUniqueSubdomain = async (businessName: string): Promise<string> => {
+    let subdomain = generateSubdomain(businessName);
+    let isAvailable = await checkSubdomainAvailability(subdomain);
+    
+    // If the subdomain is not available, add a random suffix
+    if (!isAvailable) {
+      const randomSuffix = generateRandomString(4);
+      subdomain = `${subdomain}-${randomSuffix}`;
+      isAvailable = await checkSubdomainAvailability(subdomain);
+      
+      // If still not available (very unlikely), try again with a longer suffix
+      if (!isAvailable) {
+        const longerSuffix = generateRandomString(8);
+        subdomain = `${generateSubdomain(businessName)}-${longerSuffix}`;
+      }
+    }
+    
+    return subdomain;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
@@ -34,12 +94,22 @@ const SignUp = () => {
     setIsLoading(true);
 
     try {
+      // Generate a unique subdomain from business name
+      const subdomain = await generateUniqueSubdomain(formData.businessName);
+
+      // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         formData.email,
         formData.password
       );
 
+      // Update profile with display name
+      await updateProfile(userCredential.user, {
+        displayName: formData.name
+      });
+
+      // Create coach document
       const coachRef = doc(db, 'coaches', userCredential.user.uid);
       await setDoc(coachRef, {
         name: formData.name,
@@ -56,7 +126,83 @@ const SignUp = () => {
         programs: [],
         revenue: { total: 0, monthly: 0 },
         settings: { notifications: true, darkMode: false },
-        profilePicture: ""
+        profilePicture: "",
+        subdomain: subdomain // Add subdomain to coach document
+      });
+      
+      // Create user document with role
+      const userRef = doc(firestore, 'users', userCredential.user.uid);
+      
+      // First, check if the user document already exists (created by Cloud Function)
+      const existingUserDoc = await getDoc(userRef);
+      
+      if (existingUserDoc.exists()) {
+        console.log("[SignUp] User document already exists, updating with coach role:", existingUserDoc.data());
+        
+        // Update the existing document with the coach role and other fields
+        await updateDoc(userRef, {
+          displayName: formData.name,
+          subdomain: subdomain,
+          role: 'coach',
+          isActive: true,
+          profileComplete: false,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        console.log("[SignUp] Creating new user document with role 'coach'");
+        
+        // Create a new user document
+        await setDoc(userRef, {
+          uid: userCredential.user.uid,
+          email: formData.email,
+          displayName: formData.name,
+          subdomain: subdomain,
+          role: 'coach',
+          createdAt: serverTimestamp(),
+          isActive: true,
+          profileComplete: false
+        });
+      }
+      
+      console.log("[SignUp] User document set with role 'coach'");
+      
+      // Verify user document was updated correctly
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        console.log("[SignUp] Verified user document:", userDoc.data());
+      } else {
+        console.error("[SignUp] Failed to verify user document");
+      }
+      
+      // Add an additional check after a short delay to ensure the role is set correctly
+      setTimeout(async () => {
+        try {
+          const finalUserDoc = await getDoc(userRef);
+          if (finalUserDoc.exists()) {
+            const userData = finalUserDoc.data();
+            console.log("[SignUp] Final user document check:", userData);
+            
+            // If the role is still not 'coach', update it again
+            if (userData.role !== 'coach') {
+              console.log("[SignUp] Role is not 'coach', updating again");
+              await updateDoc(userRef, {
+                role: 'coach',
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+        } catch (err) {
+          console.error("[SignUp] Error in final user document check:", err);
+        }
+      }, 2000); // 2 second delay
+      
+      // Create a separate subdomain document for faster lookups
+      await setDoc(doc(firestore, 'subdomains', subdomain), {
+        userId: userCredential.user.uid,
+        subdomain: subdomain,
+        businessName: formData.businessName,
+        createdAt: serverTimestamp(),
+        isActive: true
       });
       
       // Initialize empty collections for the coach (except clients)
@@ -155,10 +301,15 @@ const SignUp = () => {
                     type="text"
                     required
                     value={formData.businessName}
-                    onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
+                    onChange={handleBusinessNameChange}
                     className="w-full px-4 py-3 bg-[#252b3b] border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Your Fitness Brand"
                   />
+                  {subdomain && (
+                    <div className="mt-2 text-sm text-gray-400">
+                      Your subdomain will be: <span className="text-blue-400 font-medium">{subdomain}.yourdomain.com</span>
+                    </div>
+                  )}
                 </div>
 
                 <div>

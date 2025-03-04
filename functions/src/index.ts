@@ -272,15 +272,19 @@ export const createUserProfile = beforeUserCreated(async (event) => {
     const { email, uid } = event.data;
     const timestamp = new Date();
     
-    // Create user document only
+    // Create a basic user document without setting a role
+    // The role will be set by the client or coach registration process
+    console.log(`Creating basic user document for ${uid} without setting a role`);
+    
     await db.collection('users').doc(uid).set({
       email,
       createdAt: timestamp,
-      role: 'coach',
       status: 'active'
+      // No role set here - will be set by registration process
     });
 
-    return { customClaims: { role: 'coach' } };
+    // No custom claims set for role
+    return { customClaims: {} };
 
   } catch (error) {
     console.error('Error creating user profile:', error);

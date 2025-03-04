@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { 
   Users, Search, Filter, Plus, 
-  MoreVertical, Mail, Phone 
+  MoreVertical, Mail, Phone, UserCheck
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useClientData, Client } from '../../../hooks/useClientData';
@@ -155,6 +155,9 @@ const ClientsPage = () => {
                   Progress
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Coach ID
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -204,6 +207,14 @@ const ClientsPage = () => {
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       {getProgressPercentage(client)}%
                     </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center">
+                      <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
+                      <span className="text-sm text-gray-900 dark:text-white">
+                        {client.coachId ? client.coachId.substring(0, 8) + '...' : 'Not assigned'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <button 

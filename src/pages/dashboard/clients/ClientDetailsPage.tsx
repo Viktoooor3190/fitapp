@@ -4,7 +4,7 @@ import {
   ArrowLeft, User, Calendar as CalendarIcon, 
   TrendingUp, Activity, Scale,
   Clock, CheckCircle, ChevronLeft, ChevronRight,
-  Dumbbell, Apple
+  Dumbbell, Apple, UserCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, startOfWeek, addDays, isSameDay, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
@@ -18,6 +18,7 @@ interface ClientDetails {
   email: string;
   phone: string;
   joinDate: string;
+  coachId: string;
   goals: {
     type: string;
     target: string;
@@ -80,6 +81,7 @@ const ClientDetailsPage = () => {
     email: 'sarah@example.com',
     phone: '+1 234 567 8900',
     joinDate: '2024-01-15',
+    coachId: '',
     goals: [
       {
         type: 'Weight Loss',
@@ -178,6 +180,7 @@ const ClientDetailsPage = () => {
           email: clientData.email || '',
           phone: clientData.phone || '',
           joinDate: clientData.createdAt ? new Date(clientData.createdAt.toDate()).toISOString().split('T')[0] : '',
+          coachId: clientData.coachId || '',
           goals: [],
           measurements: [],
           currentProgram: {
@@ -640,9 +643,23 @@ const ClientDetailsPage = () => {
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {client.email}
                 </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {client.phone}
-                </p>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Phone</p>
+                  <p className="text-gray-900 dark:text-white">{client.phone || 'Not provided'}</p>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Coach ID</p>
+                  <div className="flex items-center">
+                    <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
+                    <p className="text-gray-900 dark:text-white">{client.coachId || 'Not assigned'}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Current Program</p>
+                  <p className="text-gray-900 dark:text-white">{client.currentProgram.name || 'No active program'}</p>
+                </div>
               </div>
             </div>
           </div>

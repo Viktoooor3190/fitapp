@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 
 interface Question {
   id: string;
@@ -168,12 +168,62 @@ const Questionnaire = () => {
 
     try {
       const clientRef = doc(db, 'clients', user.uid);
+      
+      // Get the current client document to preserve existing fields
+      const clientDoc = await getDoc(clientRef);
+      if (!clientDoc.exists()) {
+        console.error("Client document doesn't exist");
+        return;
+      }
+      
+      const clientData = clientDoc.data();
+      console.log("[Questionnaire] Current client data:", clientData);
+      
+      // Update the client document while preserving important fields
       await updateDoc(clientRef, {
         onboardingAnswers: answers,
         onboardingCompleted: true,
         status: 'active',
-        lastUpdated: serverTimestamp()
+        lastUpdated: serverTimestamp(),
+        // Preserve these fields if they exist
+        role: clientData.role || 'client',
+        coachId: clientData.coachId || null
       });
+      
+      console.log("[Questionnaire] Updated client document with onboarding answers while preserving role and coachId");
+
+      // Also ensure the user document has the correct role
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        console.log("[Questionnaire] Current user data:", userData);
+        
+        // If the role is not 'client', update it
+        if (userData.role !== 'client') {
+          console.log("[Questionnaire] User role is not 'client', updating to 'client'");
+          await updateDoc(userRef, {
+            role: 'client',
+            updatedAt: serverTimestamp()
+          });
+          console.log("[Questionnaire] Updated user document with role 'client'");
+        }
+      } else {
+        console.log("[Questionnaire] User document doesn't exist, creating it");
+        // Create the user document if it doesn't exist
+        await setDoc(userRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          role: 'client',
+          coachId: clientData.coachId || null,
+          createdAt: serverTimestamp(),
+          isActive: true,
+          profileComplete: true
+        });
+        console.log("[Questionnaire] Created user document with role 'client'");
+      }
 
       // Redirect to user dashboard
       navigate('/user/dashboard');

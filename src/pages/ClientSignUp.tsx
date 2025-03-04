@@ -1,14 +1,16 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
-import { auth, db } from "../firebase/config";
-import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { useState, useEffect } from "react";
+import { auth, db, firestore } from "../firebase/config";
+import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile } from "firebase/auth";
 import { useSubdomain } from "../contexts/SubdomainContext";
-import { doc, setDoc, updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, arrayUnion, serverTimestamp, getDoc } from "firebase/firestore";
 import { motion } from "framer-motion";
+import { useCoachSubdomain } from "../hooks/useCoach1Subdomain";
 
 const ClientSignUp = () => {
   const navigate = useNavigate();
   const { subdomain, coachId } = useSubdomain();
+  const { isCoachSubdomain, coachSubdomain, coachData } = useCoachSubdomain();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
@@ -18,9 +20,55 @@ const ClientSignUp = () => {
     confirmPassword: '',
     agreeToTerms: false
   });
+  const [effectiveCoachId, setEffectiveCoachId] = useState<string | null>(null);
+  const [effectiveSubdomain, setEffectiveSubdomain] = useState<string | null>(null);
 
   // Create Google Provider instance
   const googleProvider = new GoogleAuthProvider();
+
+  // Determine the effective coach ID and subdomain to use
+  useEffect(() => {
+    // Log the current state for debugging
+    console.log("[ClientSignUp] SubdomainContext values:", { subdomain, coachId });
+    console.log("[ClientSignUp] CoachSubdomain values:", { 
+      isCoachSubdomain, 
+      coachSubdomain, 
+      coachId: coachData?.id 
+    });
+    console.log("[ClientSignUp] Current hostname:", window.location.hostname);
+    console.log("[ClientSignUp] Current pathname:", window.location.pathname);
+    
+    // Use the coachId from SubdomainContext if available
+    if (coachId) {
+      setEffectiveCoachId(coachId);
+      setEffectiveSubdomain(subdomain);
+      console.log("[ClientSignUp] Using coachId from SubdomainContext:", coachId);
+    } 
+    // Fallback to the coachId from useCoachSubdomain if available
+    else if (isCoachSubdomain && coachData?.id) {
+      setEffectiveCoachId(coachData.id);
+      setEffectiveSubdomain(coachSubdomain);
+      console.log("[ClientSignUp] Using coachId from useCoachSubdomain:", coachData.id);
+    } else {
+      setEffectiveCoachId(null);
+      setEffectiveSubdomain(null);
+      console.log("[ClientSignUp] No coach ID available from either context");
+      
+      // Additional fallback for local development
+      if (window.location.hostname.includes('coach')) {
+        console.log("[ClientSignUp] Detected coach in hostname, attempting fallback");
+        // Extract coach number from hostname
+        const match = window.location.hostname.match(/coach(\d+)/);
+        if (match && match[1]) {
+          const coachNumber = match[1];
+          const fallbackCoachId = `test-coach-id-${coachNumber}`;
+          console.log(`[ClientSignUp] Using fallback coachId: ${fallbackCoachId}`);
+          setEffectiveCoachId(fallbackCoachId);
+          setEffectiveSubdomain(`coach${coachNumber}`);
+        }
+      }
+    }
+  }, [subdomain, coachId, isCoachSubdomain, coachSubdomain, coachData]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -40,33 +88,135 @@ const ClientSignUp = () => {
     setIsLoading(true);
 
     try {
+      console.log("[ClientSignUp] Starting user registration with coach connection:", {
+        effectiveCoachId,
+        effectiveSubdomain
+      });
+
       const userCredential = await createUserWithEmailAndPassword(
         auth, 
         formData.email, 
         formData.password
       );
 
+      // Update profile with display name
+      await updateProfile(userCredential.user, {
+        displayName: formData.name
+      });
+
       // Create client profile
       const clientRef = doc(db, 'clients', userCredential.user.uid);
       await setDoc(clientRef, {
         name: formData.name,
         email: formData.email,
-        coachId: coachId,
-        registeredViaSubdomain: subdomain,
+        coachId: effectiveCoachId,
+        registeredViaSubdomain: effectiveSubdomain,
         createdAt: serverTimestamp(),
         status: 'pending',
-        onboardingCompleted: false
+        onboardingCompleted: false,
+        role: 'client'
       });
 
-      if (coachId) {
-        const coachRef = doc(db, 'coaches', coachId);
-        await updateDoc(coachRef, {
-          clients: arrayUnion(userCredential.user.uid)
+      console.log("[ClientSignUp] Created client document with coachId:", effectiveCoachId);
+
+      // Verify client document was created correctly
+      const clientDoc = await getDoc(clientRef);
+      if (clientDoc.exists()) {
+        console.log("[ClientSignUp] Verified client document:", clientDoc.data());
+      } else {
+        console.error("[ClientSignUp] Failed to verify client document");
+      }
+
+      // Create user document with role 'client'
+      const userRef = doc(firestore, 'users', userCredential.user.uid);
+      
+      // First, check if the user document already exists (created by Cloud Function)
+      const existingUserDoc = await getDoc(userRef);
+      
+      if (existingUserDoc.exists()) {
+        console.log("[ClientSignUp] User document already exists, updating with client role:", existingUserDoc.data());
+        
+        // Update the existing document with the client role and other fields
+        await updateDoc(userRef, {
+          displayName: formData.name,
+          role: 'client',
+          coachId: effectiveCoachId,
+          registeredViaSubdomain: effectiveSubdomain,
+          isActive: true,
+          profileComplete: false,
+          updatedAt: serverTimestamp()
         });
+      } else {
+        console.log("[ClientSignUp] Creating new user document with role 'client'");
+        
+        // Create a new user document
+        await setDoc(userRef, {
+          uid: userCredential.user.uid,
+          email: formData.email,
+          displayName: formData.name,
+          role: 'client',
+          coachId: effectiveCoachId,
+          registeredViaSubdomain: effectiveSubdomain,
+          createdAt: serverTimestamp(),
+          isActive: true,
+          profileComplete: false
+        });
+      }
+
+      console.log("[ClientSignUp] User document set with role 'client'");
+
+      // Verify user document was updated correctly
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        console.log("[ClientSignUp] Verified user document:", userDoc.data());
+      } else {
+        console.error("[ClientSignUp] Failed to verify user document");
+      }
+
+      // Add an additional check after a short delay to ensure the role is set correctly
+      setTimeout(async () => {
+        try {
+          const finalUserDoc = await getDoc(userRef);
+          if (finalUserDoc.exists()) {
+            const userData = finalUserDoc.data();
+            console.log("[ClientSignUp] Final user document check:", userData);
+            
+            // If the role is still not 'client', update it again
+            if (userData.role !== 'client') {
+              console.log("[ClientSignUp] Role is not 'client', updating again");
+              await updateDoc(userRef, {
+                role: 'client',
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+        } catch (err) {
+          console.error("[ClientSignUp] Error in final user document check:", err);
+        }
+      }, 2000); // 2 second delay
+
+      // Add client to coach's clients array if there's a coach ID
+      if (effectiveCoachId) {
+        const coachRef = doc(db, 'coaches', effectiveCoachId);
+        
+        // Check if coach document exists
+        const coachDoc = await getDoc(coachRef);
+        if (coachDoc.exists()) {
+          console.log("[ClientSignUp] Coach document exists:", coachDoc.data());
+          await updateDoc(coachRef, {
+            clients: arrayUnion(userCredential.user.uid)
+          });
+          console.log("[ClientSignUp] Added client to coach's clients array:", effectiveCoachId);
+        } else {
+          console.error("[ClientSignUp] Coach document does not exist for ID:", effectiveCoachId);
+        }
+      } else {
+        console.warn("[ClientSignUp] No coach ID available, client not linked to any coach");
       }
 
       navigate('/onboarding');
     } catch (err) {
+      console.error("[ClientSignUp] Registration error:", err);
       setError(err instanceof Error ? err.message : 'An error occurred during signup');
     } finally {
       setIsLoading(false);
@@ -78,6 +228,11 @@ const ClientSignUp = () => {
     setIsLoading(true);
 
     try {
+      console.log("[ClientSignUp] Starting Google sign-in with coach connection:", {
+        effectiveCoachId,
+        effectiveSubdomain
+      });
+
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
         // Create client profile for Google sign-in
@@ -85,29 +240,116 @@ const ClientSignUp = () => {
         await setDoc(clientRef, {
           name: result.user.displayName || '',
           email: result.user.email || '',
-          coachId: coachId,
-          registeredViaSubdomain: subdomain,
+          coachId: effectiveCoachId,
+          registeredViaSubdomain: effectiveSubdomain,
           createdAt: serverTimestamp(),
           status: 'pending',
-          onboardingCompleted: false
+          onboardingCompleted: false,
+          role: 'client'
         });
 
-        // Add client to coach's clients array if there's a coach
-        if (coachId) {
-          const coachRef = doc(db, 'coaches', coachId);
+        console.log("[ClientSignUp] Created client document with coachId:", effectiveCoachId);
+
+        // Create user document with role 'client'
+        const userRef = doc(firestore, 'users', result.user.uid);
+        
+        // First, check if the user document already exists (created by Cloud Function)
+        const existingUserDoc = await getDoc(userRef);
+        
+        if (existingUserDoc.exists()) {
+          console.log("[ClientSignUp] User document already exists, updating with client role:", existingUserDoc.data());
+          
+          // Update the existing document with the client role and other fields
+          await updateDoc(userRef, {
+            displayName: result.user.displayName || '',
+            role: 'client',
+            coachId: effectiveCoachId,
+            registeredViaSubdomain: effectiveSubdomain,
+            isActive: true,
+            profileComplete: false,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          console.log("[ClientSignUp] Creating new user document with role 'client'");
+          
+          // Create a new user document
+          await setDoc(userRef, {
+            uid: result.user.uid,
+            email: result.user.email || '',
+            displayName: result.user.displayName || '',
+            role: 'client',
+            coachId: effectiveCoachId,
+            registeredViaSubdomain: effectiveSubdomain,
+            createdAt: serverTimestamp(),
+            isActive: true,
+            profileComplete: false
+          });
+        }
+
+        console.log("[ClientSignUp] User document set with role 'client'");
+
+        // Verify user document was updated correctly
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          console.log("[ClientSignUp] Verified user document:", userDoc.data());
+        } else {
+          console.error("[ClientSignUp] Failed to verify user document");
+        }
+
+        // Add an additional check after a short delay to ensure the role is set correctly
+        setTimeout(async () => {
+          try {
+            const finalUserDoc = await getDoc(userRef);
+            if (finalUserDoc.exists()) {
+              const userData = finalUserDoc.data();
+              console.log("[ClientSignUp] Final user document check:", userData);
+              
+              // If the role is still not 'client', update it again
+              if (userData.role !== 'client') {
+                console.log("[ClientSignUp] Role is not 'client', updating again");
+                await updateDoc(userRef, {
+                  role: 'client',
+                  updatedAt: serverTimestamp()
+                });
+              }
+            }
+          } catch (err) {
+            console.error("[ClientSignUp] Error in final user document check:", err);
+          }
+        }, 2000); // 2 second delay
+
+        // Add client to coach's clients array if there's a coach ID
+        if (effectiveCoachId) {
+          const coachRef = doc(db, 'coaches', effectiveCoachId);
           await updateDoc(coachRef, {
             clients: arrayUnion(result.user.uid)
           });
+          console.log("[ClientSignUp] Added client to coach's clients array:", effectiveCoachId);
+        } else {
+          console.warn("[ClientSignUp] No coach ID available, client not linked to any coach");
         }
 
         navigate('/onboarding');
       }
     } catch (err) {
-      console.error('Google Sign In Error:', err);
+      console.error("[ClientSignUp] Google Sign In Error:", err);
       setError(err instanceof Error ? err.message : 'An error occurred during Google sign in');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Display coach information if available
+  const renderCoachInfo = () => {
+    if (effectiveCoachId && (effectiveSubdomain || isCoachSubdomain)) {
+      return (
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg text-sm">
+          You're signing up with {coachData?.name || `a coach (${effectiveSubdomain})`}. 
+          Your account will be automatically connected to their coaching services.
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -127,6 +369,8 @@ const ClientSignUp = () => {
               Create your account to get personalized coaching
             </p>
           </div>
+
+          {renderCoachInfo()}
 
           {error && (
             <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm">
@@ -248,25 +492,37 @@ const ClientSignUp = () => {
                 disabled={isLoading}
                 className="w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                <img
-                  src="https://www.svgrepo.com/show/475656/google-color.svg"
-                  alt="Google"
-                  className="w-5 h-5 mr-2"
-                />
-                Continue with Google
+                <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
+                  <g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)">
+                    <path
+                      fill="#4285F4"
+                      d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.379 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.099 -17.884 43.989 -14.754 43.989 Z"
+                    />
+                  </g>
+                </svg>
+                Sign up with Google
               </button>
             </div>
           </div>
 
-          <p className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          <div className="mt-8 text-center text-gray-500 dark:text-gray-400">
             Already have an account?{' '}
-            <button
-              onClick={() => navigate('/login')}
-              className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
-            >
+            <a href="/login" className="text-blue-600 hover:text-blue-500">
               Log in
-            </button>
-          </p>
+            </a>
+          </div>
         </motion.div>
       </div>
     </div>
