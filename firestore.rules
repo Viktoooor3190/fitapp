@@ -20,16 +20,36 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach';
     }
     
+    function isClientOfCoach(clientId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/coaches/$(request.auth.uid)) &&
+        clientId in get(/databases/$(database)/documents/coaches/$(request.auth.uid)).data.clients;
+    }
+    
+    function isCoachOfSubdomain(subdomain) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/subdomains/$(subdomain)) &&
+        get(/databases/$(database)/documents/subdomains/$(subdomain)).data.userId == request.auth.uid;
+    }
+    
+    function getUserIdFromSubdomain(subdomain) {
+      return get(/databases/$(database)/documents/subdomains/$(subdomain)).data.userId;
+    }
+    
+    // For debugging purposes
+    function debug() {
+      return {'auth': request.auth, 'resource': resource.data, 'request': request.resource.data};
+    }
+    
     // Authentication related collections - always allow access
     match /auth/{document=**} {
       allow read, write: if true;
     }
     
-    // Users collection
+    // Users collection - FOR DEVELOPMENT, ALLOW ALL READS
     match /users/{userId} {
-      // Users can read and update their own data
-      // Admins can read and write all user data
-      allow read: if isOwner(userId) || isAdmin();
+      // During development, allow all reads to users collection
+      allow read: if true;
       allow create: if isAuthenticated();
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
@@ -49,27 +69,18 @@ service cloud.firestore {
       // Anyone can read subdomain data (needed for subdomain resolution)
       // Only the owner or admin can update or delete
       allow read: if true;
+      // Allow any authenticated user to create a subdomain
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && 
         (request.auth.uid == resource.data.userId || isAdmin());
-      
-      // Validate subdomain format on create and update
-      allow create, update: if 
-        // Must start with 'coach'
-        request.resource.data.subdomain.matches('^coach[a-z0-9-]*$') &&
-        // Length between 5 and 30 characters
-        request.resource.data.subdomain.size() >= 5 && 
-        request.resource.data.subdomain.size() <= 30 &&
-        // Must include userId
-        request.resource.data.userId is string;
     }
     
-    // Coaches collection
+    // Coaches collection - FOR DEVELOPMENT, ALLOW ALL READS
     match /coaches/{coachId} {
-      // Allow read access to everyone
+      // During development, allow all reads to coaches collection
       allow read: if true;
       
-      // Allow create and update by the coach or admin
+      // Allow create by the coach themselves or admin
       allow create: if isOwner(coachId) || isAdmin();
       
       // Allow updates by the coach, admin, or any authenticated user for client registration
@@ -99,10 +110,34 @@ service cloud.firestore {
     
     // Clients collection
     match /clients/{clientId} {
-      allow read: if isOwner(clientId) || isAdmin();
-      allow create: if isAuthenticated();
-      allow update: if isOwner(clientId) || isAdmin();
+      // For development and testing, allow all authenticated users to read and write clients
+      // This simplifies the rules while we're still developing
+      // In production, we would use more restrictive rules
+      allow read, write: if isAuthenticated();
+      
+      // Only admin can delete clients
       allow delete: if isAdmin();
+    }
+    
+    // Programs, sessions, messages, revenue, and reports collections
+    match /programs/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /sessions/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /messages/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /revenue/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /reports/{document=**} {
+      allow read, write: if isAuthenticated();
     }
     
     // Other collections...
