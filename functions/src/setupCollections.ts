@@ -1,7 +1,5 @@
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
-import { getFirestore } from 'firebase-admin/firestore';
-
-const db = getFirestore();
+import { db } from './admin';
 
 // Create additional collections when a new coach document is created
 // This triggers when a new document is created in the coaches collection

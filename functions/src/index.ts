@@ -2,8 +2,7 @@ import { onCall } from 'firebase-functions/v2/https';
 import { onRequest } from 'firebase-functions/v2/https';
 import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } from 'firebase-functions/v2/firestore';
-import { initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { db } from './admin';
 import { setupUserCollections } from './setupCollections';
 import {
   recordNewClientActivity,
@@ -14,11 +13,7 @@ import {
   recordSessionCompletedActivity
 } from './activity';
 import { weeklyReportsUpdate } from './updateReports';
-
-// Initialize Firebase Admin
-initializeApp();
-
-const db = getFirestore();
+import { generateWorkoutPlan, generateNutritionPlan, checkTypeformCompletion, autoGeneratePlans } from './aiPlans';
 
 interface UserData {
   email: string;
@@ -38,6 +33,12 @@ export {
   recordSessionCompletedActivity,
   weeklyReportsUpdate
 };
+
+// Export AI plan generation functions with CORS support
+export const aiGenerateWorkoutPlan = generateWorkoutPlan;
+export const aiGenerateNutritionPlan = generateNutritionPlan;
+export const aiCheckTypeformCompletion = checkTypeformCompletion;
+export const aiAutoGeneratePlans = autoGeneratePlans;
 
 // Manual reports update function for coaches to trigger
 export const manualReportsUpdate = onCall(async (request) => {
@@ -269,15 +270,20 @@ export const manualReportsUpdate = onCall(async (request) => {
 // Legacy function - keeping for reference but not using
 export const createUserProfile = beforeUserCreated(async (event) => {
   try {
-    const { email, uid } = event.data;
+    if (!event.data) {
+      console.error('No user data provided');
+      throw new Error('No user data provided');
+    }
+    
+    const userData = event.data;
     const timestamp = new Date();
     
     // Create a basic user document without setting a role
     // The role will be set by the client or coach registration process
-    console.log(`Creating basic user document for ${uid} without setting a role`);
+    console.log(`Creating basic user document for ${userData.uid} without setting a role`);
     
-    await db.collection('users').doc(uid).set({
-      email,
+    await db.collection('users').doc(userData.uid).set({
+      email: userData.email,
       createdAt: timestamp,
       status: 'active'
       // No role set here - will be set by registration process

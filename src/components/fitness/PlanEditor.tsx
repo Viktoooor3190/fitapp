@@ -7,7 +7,8 @@ import {
   Trash2, 
   Save, 
   X,
-  Info
+  Info,
+  Sparkles
 } from 'lucide-react';
 import { 
   WorkoutPlan, 
@@ -20,6 +21,7 @@ import {
   getWorkoutPlan,
   getNutritionPlan
 } from '../../firebase/fitnessData';
+import AIPlanner from './AIPlanner';
 
 interface PlanEditorProps {
   clientId: string;
@@ -29,7 +31,7 @@ interface PlanEditorProps {
 }
 
 const PlanEditor = ({ clientId, selectedDate, onSave, onCancel }: PlanEditorProps) => {
-  const [activeTab, setActiveTab] = useState<'workout' | 'nutrition'>('workout');
+  const [activeTab, setActiveTab] = useState<'workout' | 'nutrition' | 'ai'>('workout');
   const [isLoading, setIsLoading] = useState(true);
   
   // Workout state
@@ -49,30 +51,35 @@ const PlanEditor = ({ clientId, selectedDate, onSave, onCancel }: PlanEditorProp
     notes: ''
   });
 
-  useEffect(() => {
-    const fetchExistingPlans = async () => {
-      setIsLoading(true);
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      
-      try {
-        // Fetch existing workout plan
-        const workoutResult = await getWorkoutPlan(clientId, dateStr);
-        if (workoutResult.success && workoutResult.data) {
-          setWorkoutPlan(workoutResult.data);
-        }
-        
-        // Fetch existing nutrition plan
-        const nutritionResult = await getNutritionPlan(clientId, dateStr);
-        if (nutritionResult.success && nutritionResult.data) {
-          setNutritionPlan(nutritionResult.data);
-        }
-      } catch (error) {
-        console.error('Error fetching plans:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const handlePlanGenerated = () => {
+    // Reload the plans after AI generation
+    fetchExistingPlans();
+  };
+
+  const fetchExistingPlans = async () => {
+    setIsLoading(true);
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
     
+    try {
+      // Fetch existing workout plan
+      const workoutResult = await getWorkoutPlan(clientId, dateStr);
+      if (workoutResult.success && workoutResult.data) {
+        setWorkoutPlan(workoutResult.data);
+      }
+      
+      // Fetch existing nutrition plan
+      const nutritionResult = await getNutritionPlan(clientId, dateStr);
+      if (nutritionResult.success && nutritionResult.data) {
+        setNutritionPlan(nutritionResult.data);
+      }
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchExistingPlans();
   }, [clientId, selectedDate]);
 
@@ -212,30 +219,30 @@ const PlanEditor = ({ clientId, selectedDate, onSave, onCancel }: PlanEditorProp
   }
 
   return (
-    <div className="bg-gray-800 rounded-xl p-4">
+    <div className="bg-gray-800 rounded-xl p-4 shadow-lg">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-white">
-          Edit Plan for {format(selectedDate, 'MMMM d, yyyy')}
+        <h2 className="text-xl font-semibold text-white">
+          Plan for {format(selectedDate, 'MMMM d, yyyy')}
         </h2>
         <div className="flex space-x-2">
           <button
             onClick={handleSave}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center text-sm"
+            disabled={isLoading}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center"
           >
-            <Save className="w-4 h-4 mr-1" />
+            <Save className="w-4 h-4 mr-1.5" />
             Save
           </button>
           <button
             onClick={onCancel}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg flex items-center text-sm"
+            className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center"
           >
-            <X className="w-4 h-4 mr-1" />
+            <X className="w-4 h-4 mr-1.5" />
             Cancel
           </button>
         </div>
       </div>
-
-      {/* Tabs */}
+      
       <div className="flex border-b border-gray-700 mb-4">
         <button
           className={`px-4 py-2 text-sm font-medium flex items-center ${
@@ -258,6 +265,17 @@ const PlanEditor = ({ clientId, selectedDate, onSave, onCancel }: PlanEditorProp
         >
           <Apple className="w-4 h-4 mr-1.5" />
           Nutrition
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium flex items-center ${
+            activeTab === 'ai'
+              ? 'text-purple-500 border-b-2 border-purple-500'
+              : 'text-gray-400 hover:text-gray-300'
+          }`}
+          onClick={() => setActiveTab('ai')}
+        >
+          <Sparkles className="w-4 h-4 mr-1.5" />
+          AI Generator
         </button>
       </div>
 
@@ -517,6 +535,14 @@ const PlanEditor = ({ clientId, selectedDate, onSave, onCancel }: PlanEditorProp
             />
           </div>
         </div>
+      )}
+
+      {/* AI Plan Generator */}
+      {activeTab === 'ai' && (
+        <AIPlanner 
+          clientId={clientId} 
+          onPlanGenerated={handlePlanGenerated}
+        />
       )}
     </div>
   );

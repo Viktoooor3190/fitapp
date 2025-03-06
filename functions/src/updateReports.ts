@@ -1,8 +1,6 @@
-import { getFirestore } from 'firebase-admin/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { ScheduledEvent } from 'firebase-functions/v2/scheduler';
-
-const db = getFirestore();
+import { db } from './admin';
 
 // Weekly scheduled function to update reports data
 export const weeklyReportsUpdate = onSchedule({

@@ -1,7 +1,5 @@
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
-import { getFirestore } from 'firebase-admin/firestore';
-
-const db = getFirestore();
+import { db } from './admin';
 
 // Record activity when a new client is created
 export const recordNewClientActivity = onDocumentCreated('clients/{clientId}', async (event) => {
