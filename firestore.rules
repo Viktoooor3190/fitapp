@@ -26,6 +26,12 @@ service cloud.firestore {
         clientId in get(/databases/$(database)/documents/coaches/$(request.auth.uid)).data.clients;
     }
     
+    function isCoachOfClient(clientId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/clients/$(clientId)) &&
+        get(/databases/$(database)/documents/clients/$(clientId)).data.coachId == request.auth.uid;
+    }
+    
     function isCoachOfSubdomain(subdomain) {
       return isAuthenticated() && 
         exists(/databases/$(database)/documents/subdomains/$(subdomain)) &&
@@ -117,6 +123,34 @@ service cloud.firestore {
       
       // Only admin can delete clients
       allow delete: if isAdmin();
+    }
+    
+    // Workout Plans collection
+    match /workoutPlans/{clientId}/{document=**} {
+      // Allow read by the client themselves or their coach
+      allow read: if isOwner(clientId) || isCoachOfClient(clientId) || isAdmin();
+      // Allow write by the client's coach or admin
+      allow write: if isCoachOfClient(clientId) || isAdmin();
+      // Allow client to update only the 'completed' field of exercises
+      allow update: if isOwner(clientId) && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['exercises']) &&
+        request.resource.data.exercises.diff(resource.data.exercises).changedKeys().size() == 1 &&
+        request.resource.data.exercises.diff(resource.data.exercises).changedKeys().hasOnly([request.resource.data.exercises.diff(resource.data.exercises).changedKeys().toArray()[0]]) &&
+        request.resource.data.exercises[request.resource.data.exercises.diff(resource.data.exercises).changedKeys().toArray()[0]].diff(resource.data.exercises[request.resource.data.exercises.diff(resource.data.exercises).changedKeys().toArray()[0]]).affectedKeys().hasOnly(['completed']);
+    }
+    
+    // Nutrition Plans collection
+    match /nutritionPlans/{clientId}/{document=**} {
+      // Allow read by the client themselves or their coach
+      allow read: if isOwner(clientId) || isCoachOfClient(clientId) || isAdmin();
+      // Allow write by the client's coach or admin
+      allow write: if isCoachOfClient(clientId) || isAdmin();
+      // Allow client to update only the 'completed' field of meals
+      allow update: if isOwner(clientId) && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['meals']) &&
+        request.resource.data.meals.diff(resource.data.meals).changedKeys().size() == 1 &&
+        request.resource.data.meals.diff(resource.data.meals).changedKeys().hasOnly([request.resource.data.meals.diff(resource.data.meals).changedKeys().toArray()[0]]) &&
+        request.resource.data.meals[request.resource.data.meals.diff(resource.data.meals).changedKeys().toArray()[0]].diff(resource.data.meals[request.resource.data.meals.diff(resource.data.meals).changedKeys().toArray()[0]]).affectedKeys().hasOnly(['completed']);
     }
     
     // Programs, sessions, messages, revenue, and reports collections

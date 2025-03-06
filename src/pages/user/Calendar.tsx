@@ -1,17 +1,25 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Calendar as CalendarIcon, Clock, User, Apple, Dumbbell, MessageCircle } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, isSameMonth } from 'date-fns';
-import { auth, db } from '../../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, isSameMonth, getYear, getMonth } from 'date-fns';
+import { auth } from '../../firebase/config';
+import { 
+  getMonthWorkoutPlans, 
+  getMonthNutritionPlans,
+  updateWorkoutExerciseStatus,
+  updateMealStatus,
+  WorkoutPlan,
+  NutritionPlan,
+  Exercise,
+  Meal
+} from '../../firebase/fitnessData';
 
 interface CalendarEvent {
   id: string;
   title: string;
-  date: Date;
-  type: 'training' | 'nutrition';
-  description?: string;
-  coachName?: string;
+  date: string;
+  type: 'workout' | 'nutrition';
+  data: WorkoutPlan | NutritionPlan;
 }
 
 const Calendar = () => {
@@ -19,6 +27,8 @@ const Calendar = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedWorkout, setSelectedWorkout] = useState<WorkoutPlan | null>(null);
+  const [selectedNutrition, setSelectedNutrition] = useState<NutritionPlan | null>(null);
 
   // Get all days in current month
   const monthDays = eachDayOfInterval({
@@ -27,61 +37,125 @@ const Calendar = () => {
   });
 
   useEffect(() => {
-    const fetchEvents = async () => {
+    const fetchMonthData = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
 
-        // Fetch training sessions
-        const trainingsQuery = query(
-          collection(db, 'sessions'),
-          where('clientId', '==', user.uid),
-          where('date', '>=', startOfMonth(currentDate)),
-          where('date', '<=', endOfMonth(currentDate))
-        );
+        setIsLoading(true);
+        const year = getYear(currentDate);
+        const month = getMonth(currentDate) + 1; // JavaScript months are 0-indexed
 
-        // Fetch nutrition plans
-        const nutritionQuery = query(
-          collection(db, 'nutritionPlans'),
-          where('clientId', '==', user.uid),
-          where('date', '>=', startOfMonth(currentDate)),
-          where('date', '<=', endOfMonth(currentDate))
-        );
-
-        const [trainingsSnapshot, nutritionSnapshot] = await Promise.all([
-          getDocs(trainingsQuery),
-          getDocs(nutritionQuery)
+        // Fetch workout and nutrition plans for the month
+        const [workoutResult, nutritionResult] = await Promise.all([
+          getMonthWorkoutPlans(user.uid, year, month),
+          getMonthNutritionPlans(user.uid, year, month)
         ]);
 
-        const trainings = trainingsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          type: 'training' as const,
-          date: doc.data().date.toDate()
-        }));
+        const newEvents: CalendarEvent[] = [];
 
-        const nutritionPlans = nutritionSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          type: 'nutrition' as const,
-          date: doc.data().date.toDate()
-        }));
+        // Process workout plans
+        if (workoutResult.success && workoutResult.data) {
+          workoutResult.data.forEach(workout => {
+            newEvents.push({
+              id: workout.id || workout.date,
+              title: workout.name,
+              date: workout.date,
+              type: 'workout',
+              data: workout
+            });
+          });
+        }
 
-        setEvents([...trainings, ...nutritionPlans]);
+        // Process nutrition plans
+        if (nutritionResult.success && nutritionResult.data) {
+          nutritionResult.data.forEach(nutrition => {
+            newEvents.push({
+              id: nutrition.id || nutrition.date,
+              title: `Nutrition Plan (${nutrition.totalCalories} cal)`,
+              date: nutrition.date,
+              type: 'nutrition',
+              data: nutrition
+            });
+          });
+        }
+
+        setEvents(newEvents);
       } catch (error) {
-        console.error('Error fetching events:', error);
+        console.error('Error fetching month data:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchEvents();
+    fetchMonthData();
   }, [currentDate]);
 
   const getEventsForDate = (date: Date) => {
-    return events.filter(event => 
-      format(event.date, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd')
-    );
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return events.filter(event => event.date === dateStr);
+  };
+
+  const handleDateClick = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    setSelectedDate(date);
+    
+    // Find workout and nutrition for the selected date
+    const dayEvents = getEventsForDate(date);
+    const workout = dayEvents.find(e => e.type === 'workout')?.data as WorkoutPlan;
+    const nutrition = dayEvents.find(e => e.type === 'nutrition')?.data as NutritionPlan;
+    
+    setSelectedWorkout(workout || null);
+    setSelectedNutrition(nutrition || null);
+  };
+
+  const handleExerciseStatusChange = async (exerciseIndex: number, completed: boolean) => {
+    if (!selectedWorkout || !auth.currentUser) return;
+    
+    try {
+      await updateWorkoutExerciseStatus(
+        auth.currentUser.uid,
+        selectedWorkout.date,
+        exerciseIndex,
+        completed
+      );
+      
+      // Update local state
+      setSelectedWorkout(prev => {
+        if (!prev) return null;
+        const updatedExercises = [...prev.exercises];
+        updatedExercises[exerciseIndex] = { 
+          ...updatedExercises[exerciseIndex], 
+          completed 
+        };
+        return { ...prev, exercises: updatedExercises };
+      });
+    } catch (error) {
+      console.error('Error updating exercise status:', error);
+    }
+  };
+
+  const handleMealStatusChange = async (mealIndex: number, completed: boolean) => {
+    if (!selectedNutrition || !auth.currentUser) return;
+    
+    try {
+      await updateMealStatus(
+        auth.currentUser.uid,
+        selectedNutrition.date,
+        mealIndex,
+        completed
+      );
+      
+      // Update local state
+      setSelectedNutrition(prev => {
+        if (!prev) return null;
+        const updatedMeals = [...prev.meals];
+        updatedMeals[mealIndex] = { ...updatedMeals[mealIndex], completed };
+        return { ...prev, meals: updatedMeals };
+      });
+    } catch (error) {
+      console.error('Error updating meal status:', error);
+    }
   };
 
   if (isLoading) {
@@ -140,12 +214,13 @@ const Calendar = () => {
             <div className="grid grid-cols-7 gap-1">
               {monthDays.map((day, index) => {
                 const dayEvents = getEventsForDate(day);
-                const hasEvents = dayEvents.length > 0;
+                const hasWorkout = dayEvents.some(e => e.type === 'workout');
+                const hasNutrition = dayEvents.some(e => e.type === 'nutrition');
                 
                 return (
                   <button
                     key={index}
-                    onClick={() => setSelectedDate(day)}
+                    onClick={() => handleDateClick(day)}
                     className={`
                       h-14 p-1.5 rounded-lg relative flex flex-col items-center justify-between
                       ${!isSameMonth(day, currentDate) ? 'text-gray-600' : 'text-gray-200'}
@@ -154,16 +229,14 @@ const Calendar = () => {
                     `}
                   >
                     <span className="text-xs">{format(day, 'd')}</span>
-                    {hasEvents && (
+                    {(hasWorkout || hasNutrition) && (
                       <div className="flex space-x-0.5">
-                        {dayEvents.map((event, i) => (
-                          <div
-                            key={i}
-                            className={`w-1 h-1 rounded-full ${
-                              event.type === 'training' ? 'bg-blue-500' : 'bg-green-500'
-                            }`}
-                          />
-                        ))}
+                        {hasWorkout && (
+                          <div className="w-1 h-1 rounded-full bg-blue-500" />
+                        )}
+                        {hasNutrition && (
+                          <div className="w-1 h-1 rounded-full bg-green-500" />
+                        )}
                       </div>
                     )}
                   </button>
@@ -174,45 +247,136 @@ const Calendar = () => {
 
           {/* Selected Date Events */}
           {selectedDate && (
-            <div className="mt-4 bg-gray-800 rounded-xl p-4">
-              <h3 className="text-base font-semibold text-white mb-3">
-                Events for {format(selectedDate, 'MMMM d, yyyy')}
-              </h3>
-              <div className="space-y-2">
-                {getEventsForDate(selectedDate).map((event, index) => (
+            <div className="mt-4 space-y-4">
+              {/* Workout Plan */}
+              {selectedWorkout && (
+                <div className="bg-gray-800 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="bg-blue-500/20 p-2 rounded-lg">
+                        <Dumbbell className="w-5 h-5 text-blue-500" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white">{selectedWorkout.name}</h3>
+                    </div>
+                    <span className="text-sm text-gray-400">{format(selectedDate, 'MMMM d, yyyy')}</span>
+                  </div>
+                  
+                  {selectedWorkout.description && (
+                    <p className="text-gray-400 mb-3">{selectedWorkout.description}</p>
+                  )}
+                  
+                  <div className="space-y-2 mt-2">
+                    {selectedWorkout.exercises.map((exercise, index) => (
                   <motion.div
-                    key={event.id}
+                        key={index}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="bg-gray-700 rounded-lg p-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <div className={`p-1.5 rounded-lg ${
-                          event.type === 'training' ? 'bg-blue-500/20' : 'bg-green-500/20'
-                        }`}>
-                          {event.type === 'training' ? (
-                            <Dumbbell className="w-4 h-4 text-blue-500" />
-                          ) : (
-                            <Apple className="w-4 h-4 text-green-500" />
+                        transition={{ delay: index * 0.05 }}
+                        className={`
+                          bg-gray-700/50 rounded-lg p-3 flex items-center justify-between
+                          ${exercise.completed ? 'border-l-4 border-green-500' : ''}
+                        `}
+                      >
+                        <div>
+                          <h4 className="text-white font-medium">{exercise.name}</h4>
+                          <p className="text-sm text-gray-400">
+                            {exercise.sets} sets • {exercise.reps} reps • {exercise.weight}
+                          </p>
+                          {exercise.notes && (
+                            <p className="text-xs text-gray-500 mt-1">{exercise.notes}</p>
                           )}
                         </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-white">{event.title}</h4>
-                          <p className="text-xs text-gray-400">{event.description}</p>
-                        </div>
+                        <input 
+                          type="checkbox"
+                          checked={exercise.completed}
+                          onChange={e => handleExerciseStatusChange(index, e.target.checked)}
+                          className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                  
+                  {selectedWorkout.notes && (
+                    <div className="mt-3 p-3 bg-gray-700/30 rounded-lg">
+                      <p className="text-sm text-gray-400">{selectedWorkout.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Nutrition Plan */}
+              {selectedNutrition && (
+                <div className="bg-gray-800 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="bg-green-500/20 p-2 rounded-lg">
+                        <Apple className="w-5 h-5 text-green-500" />
                       </div>
-                      {event.coachName && (
-                        <div className="flex items-center text-xs text-gray-400">
-                          <User className="w-3 h-3 mr-1" />
-                          {event.coachName}
+                      <h3 className="text-lg font-semibold text-white">Nutrition Plan</h3>
+                    </div>
+                    <span className="text-sm text-gray-400">{format(selectedDate, 'MMMM d, yyyy')}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="bg-gray-700/50 rounded-lg p-2 text-center">
+                      <p className="text-gray-400 text-xs">Calories</p>
+                      <p className="text-white font-semibold">{selectedNutrition.totalCalories}</p>
+                    </div>
+                    <div className="bg-gray-700/50 rounded-lg p-2 text-center">
+                      <p className="text-gray-400 text-xs">Protein</p>
+                      <p className="text-white font-semibold">{selectedNutrition.macros.protein}g</p>
+                    </div>
+                    <div className="bg-gray-700/50 rounded-lg p-2 text-center">
+                      <p className="text-gray-400 text-xs">Carbs/Fats</p>
+                      <p className="text-white font-semibold">{selectedNutrition.macros.carbs}g / {selectedNutrition.macros.fat}g</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {selectedNutrition.meals.map((meal, index) => (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className={`
+                          bg-gray-700/50 rounded-lg p-3 flex items-center justify-between
+                          ${meal.completed ? 'border-l-4 border-green-500' : ''}
+                        `}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-white font-medium">{meal.name}</h4>
+                            <span className="text-sm text-gray-400 ml-2">{meal.calories} cal</span>
+                          </div>
+                          <p className="text-sm text-gray-400">{meal.description}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            P: {meal.protein}g • C: {meal.carbs}g • F: {meal.fat}g
+                          </p>
+                        </div>
+                        <input 
+                          type="checkbox"
+                          checked={meal.completed}
+                          onChange={e => handleMealStatusChange(index, e.target.checked)}
+                          className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-green-500 focus:ring-green-500 focus:ring-offset-gray-800"
+                        />
+                      </motion.div>
+                    ))}
+                      </div>
+                  
+                  {selectedNutrition.notes && (
+                    <div className="mt-3 p-3 bg-gray-700/30 rounded-lg">
+                      <p className="text-sm text-gray-400">{selectedNutrition.notes}</p>
                         </div>
                       )}
                     </div>
-                  </motion.div>
-                ))}
+              )}
+              
+              {!selectedWorkout && !selectedNutrition && (
+                <div className="bg-gray-800 rounded-xl p-4 text-center">
+                  <p className="text-gray-400">No workout or nutrition plan for {format(selectedDate, 'MMMM d, yyyy')}</p>
               </div>
+              )}
             </div>
           )}
         </motion.div>

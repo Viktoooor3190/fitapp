@@ -1,16 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, User, Calendar as CalendarIcon, 
+  ArrowLeft, User, CalendarIcon, 
+  ChevronLeft, ChevronRight,
   TrendingUp, Activity, Scale,
-  Clock, CheckCircle, ChevronLeft, ChevronRight,
-  Dumbbell, Apple, UserCheck
+  Clock, CheckCircle, 
+  Dumbbell, Apple, UserCheck, Edit, Plus, Loader, Pencil
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { format, startOfWeek, addDays, isSameDay, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, startOfMonth, endOfMonth, addMonths, subMonths, getYear, getMonth } from 'date-fns';
 import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../contexts/AuthContext';
+import PlanEditor from '../../../components/fitness/PlanEditor';
+import { 
+  getMonthWorkoutPlans, 
+  getMonthNutritionPlans,
+  getWorkoutPlan,
+  getNutritionPlan,
+  WorkoutPlan,
+  NutritionPlan
+} from '../../../firebase/fitnessData';
 
 interface ClientDetails {
   id: string;
@@ -67,6 +77,14 @@ interface DaySchedule {
 
 interface ClientSchedule {
   [date: string]: DaySchedule;
+}
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;
+  type: 'workout' | 'nutrition';
+  data: WorkoutPlan | NutritionPlan;
 }
 
 const ClientDetailsPage = () => {
@@ -141,9 +159,14 @@ const ClientDetailsPage = () => {
     ]
   });
 
-  const [selectedDate, setSelectedDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedDaySchedule, setSelectedDaySchedule] = useState<DaySchedule | null>(null);
+  const [isEditingPlan, setIsEditingPlan] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [selectedWorkout, setSelectedWorkout] = useState<WorkoutPlan | null>(null);
+  const [selectedNutrition, setSelectedNutrition] = useState<NutritionPlan | null>(null);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
 
   // Fetch client data from Firestore
   useEffect(() => {
@@ -327,66 +350,277 @@ const ClientDetailsPage = () => {
     fetchClientData();
   }, [clientId, user]);
 
-  // Dummy schedule data - replace with Firestore data later
-  const schedule: ClientSchedule = {
-    '2024-02-06': {
-      workout: {
-        type: 'Upper Body',
-        exercises: [
-          'Bench Press: 4 sets x 8-10 reps',
-          'Shoulder Press: 3 sets x 12 reps',
-          'Pull-ups: 3 sets to failure'
-        ]
-      },
-      nutrition: {
-        type: 'High Protein',
-        meals: [
-          {
-            name: 'Breakfast',
-            calories: 650,
-            description: 'Protein oats with banana and almonds'
-          },
-          {
-            name: 'Lunch',
-            calories: 750,
-            description: 'Grilled chicken salad with quinoa'
-          },
-          {
-            name: 'Dinner',
-            calories: 800,
-            description: 'Salmon with sweet potato and vegetables'
-          },
-          {
-            name: 'Snacks',
-            calories: 200,
-            description: 'Protein shake, Greek yogurt with berries'
-          }
-        ],
-        totalCalories: 2400,
-        macros: {
-          protein: 180,
-          carbs: 220,
-          fats: 65
-        }
-      }
+  // Update the useEffect hook to use refreshMonthPlans
+  useEffect(() => {
+    if (clientId) {
+      refreshMonthPlans(currentMonth);
     }
-    // Add more days...
-  };
+  }, [clientId, currentMonth]);
 
+  // Add a useEffect to set a default selected date when the component loads
+  useEffect(() => {
+    if (clientId && !selectedDate) {
+      // Set today as the default selected date
+      const today = new Date();
+      // Create a new date object to avoid reference issues
+      const todayCopy = new Date(today);
+      handleDayClick(todayCopy);
+    }
+  }, [clientId, selectedDate]);
+
+  // Update the month navigation functions to refresh plans
   const handlePreviousMonth = () => {
-    setCurrentMonth(subMonths(currentMonth, 1));
+    setCurrentMonth(prevMonth => {
+      const newMonth = subMonths(prevMonth, 1);
+      refreshMonthPlans(newMonth);
+      return newMonth;
+    });
   };
 
   const handleNextMonth = () => {
-    setCurrentMonth(addMonths(currentMonth, 1));
+    setCurrentMonth(prevMonth => {
+      const newMonth = addMonths(prevMonth, 1);
+      refreshMonthPlans(newMonth);
+      return newMonth;
+    });
   };
 
-  const handleDayClick = (date: Date) => {
-    setSelectedDate(date);
-    const dateKey = format(date, 'yyyy-MM-dd');
-    setSelectedDaySchedule(schedule[dateKey] || null);
+  // Add a helper function to refresh plans for a given month
+  const refreshMonthPlans = async (month: Date) => {
+    if (!clientId) return;
+    
+    setIsLoadingPlans(true);
+    
+    try {
+      const year = getYear(month);
+      const monthNum = getMonth(month) + 1; // JavaScript months are 0-indexed
+      
+      // Fetch workout and nutrition plans for the month
+      const [workoutResult, nutritionResult] = await Promise.all([
+        getMonthWorkoutPlans(clientId, year, monthNum),
+        getMonthNutritionPlans(clientId, year, monthNum)
+      ]);
+      
+      const events: CalendarEvent[] = [];
+      
+      // Process workout plans
+      if (workoutResult.success && workoutResult.data) {
+        workoutResult.data.forEach(workout => {
+          events.push({
+            id: workout.id || workout.date,
+            title: workout.name,
+            date: workout.date,
+            type: 'workout',
+            data: workout
+          });
+        });
+      }
+      
+      // Process nutrition plans
+      if (nutritionResult.success && nutritionResult.data) {
+        nutritionResult.data.forEach(nutrition => {
+          events.push({
+            id: nutrition.id || nutrition.date,
+            title: `Nutrition Plan (${nutrition.totalCalories} cal)`,
+            date: nutrition.date,
+            type: 'nutrition',
+            data: nutrition
+          });
+        });
+      }
+      
+      setCalendarEvents(events);
+      
+      // If there's a selected date, check if it's in the new month
+      if (selectedDate) {
+        const selectedMonth = getMonth(selectedDate);
+        const selectedYear = getYear(selectedDate);
+        
+        if (selectedMonth !== getMonth(month) || selectedYear !== getYear(month)) {
+          // If the selected date is not in the new month, clear the selection
+          setSelectedDate(null);
+          setSelectedWorkout(null);
+          setSelectedNutrition(null);
+          setSelectedDaySchedule(null);
+        } else {
+          // If the selected date is in the new month, refresh its data
+          handleDayClick(selectedDate);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing month plans:', error);
+    } finally {
+      setIsLoadingPlans(false);
+    }
   };
 
+  const handleDayClick = async (date: Date) => {
+    // Clone the date to avoid reference issues
+    const selectedDateCopy = new Date(date);
+    setSelectedDate(selectedDateCopy);
+    setIsLoadingPlans(true);
+    
+    try {
+      // Format the date string
+      const dateStr = format(selectedDateCopy, 'yyyy-MM-dd');
+      
+      // If we already have the client ID, fetch the plans directly
+      if (clientId) {
+        // Fetch both workout and nutrition plans for the selected date
+        const [workoutResult, nutritionResult] = await Promise.all([
+          getWorkoutPlan(clientId, dateStr),
+          getNutritionPlan(clientId, dateStr)
+        ]);
+        
+        // Update the workout plan state
+        if (workoutResult.success) {
+          setSelectedWorkout(workoutResult.data || null);
+        } else {
+          console.error('Error fetching workout plan:', workoutResult.error);
+          setSelectedWorkout(null);
+        }
+        
+        // Update the nutrition plan state
+        if (nutritionResult.success) {
+          setSelectedNutrition(nutritionResult.data || null);
+        } else {
+          console.error('Error fetching nutrition plan:', nutritionResult.error);
+          setSelectedNutrition(null);
+        }
+        
+        // For backward compatibility with existing code
+        const schedule = {
+          workout: workoutResult.data ? {
+            type: workoutResult.data.name,
+            exercises: workoutResult.data.exercises.map(ex => `${ex.name}: ${ex.sets} sets x ${ex.reps}`)
+          } : undefined,
+          nutrition: nutritionResult.data ? {
+            type: 'Custom',
+            meals: nutritionResult.data.meals.map(meal => ({
+              name: meal.name,
+              calories: meal.calories,
+              description: meal.description
+            })),
+            totalCalories: nutritionResult.data.totalCalories,
+            macros: {
+              protein: nutritionResult.data.macros.protein,
+              carbs: nutritionResult.data.macros.carbs,
+              fats: nutritionResult.data.macros.fat
+            }
+          } : undefined
+        };
+        
+        setSelectedDaySchedule(schedule);
+      } else {
+        // If we don't have the client ID, use the cached events
+        const dayEvents = calendarEvents.filter(event => event.date === dateStr);
+        
+        const workout = dayEvents.find(e => e.type === 'workout')?.data as WorkoutPlan;
+        const nutrition = dayEvents.find(e => e.type === 'nutrition')?.data as NutritionPlan;
+        
+        setSelectedWorkout(workout || null);
+        setSelectedNutrition(nutrition || null);
+        
+        // For backward compatibility with existing code
+        const schedule = {
+          workout: workout ? {
+            type: workout.name,
+            exercises: workout.exercises.map(ex => `${ex.name}: ${ex.sets} sets x ${ex.reps}`)
+          } : undefined,
+          nutrition: nutrition ? {
+            type: 'Custom',
+            meals: nutrition.meals.map(meal => ({
+              name: meal.name,
+              calories: meal.calories,
+              description: meal.description
+            })),
+            totalCalories: nutrition.totalCalories,
+            macros: {
+              protein: nutrition.macros.protein,
+              carbs: nutrition.macros.carbs,
+              fats: nutrition.macros.fat
+            }
+          } : undefined
+        };
+        
+        setSelectedDaySchedule(schedule);
+      }
+    } catch (error) {
+      console.error('Error handling day click:', error);
+      setSelectedWorkout(null);
+      setSelectedNutrition(null);
+      setSelectedDaySchedule(null);
+    } finally {
+      setIsLoadingPlans(false);
+    }
+  };
+
+  // Update the handleEditPlan function
+  const handleEditPlan = () => {
+    setIsEditingPlan(true);
+  };
+
+  // Update the handleSavePlan function to show loading state
+  const handleSavePlan = () => {
+    setIsLoadingPlans(true);
+    setIsEditingPlan(false);
+    
+    // Refresh the calendar data
+    const year = getYear(currentMonth);
+    const month = getMonth(currentMonth) + 1;
+    
+    Promise.all([
+      getMonthWorkoutPlans(clientId!, year, month),
+      getMonthNutritionPlans(clientId!, year, month)
+    ]).then(([workoutResult, nutritionResult]) => {
+      const events: CalendarEvent[] = [];
+      
+      if (workoutResult.success && workoutResult.data) {
+        workoutResult.data.forEach(workout => {
+          events.push({
+            id: workout.id || workout.date,
+            title: workout.name,
+            date: workout.date,
+            type: 'workout',
+            data: workout
+          });
+        });
+      }
+      
+      if (nutritionResult.success && nutritionResult.data) {
+        nutritionResult.data.forEach(nutrition => {
+          events.push({
+            id: nutrition.id || nutrition.date,
+            title: `Nutrition Plan (${nutrition.totalCalories} cal)`,
+            date: nutrition.date,
+            type: 'nutrition',
+            data: nutrition
+          });
+        });
+      }
+      
+      setCalendarEvents(events);
+      
+      // If the selected date is still the same, update the selected workout and nutrition
+      if (selectedDate) {
+        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        const dayEvents = events.filter(event => event.date === dateStr);
+        
+        const workout = dayEvents.find(e => e.type === 'workout')?.data as WorkoutPlan;
+        const nutrition = dayEvents.find(e => e.type === 'nutrition')?.data as NutritionPlan;
+        
+        setSelectedWorkout(workout || null);
+        setSelectedNutrition(nutrition || null);
+      }
+      
+      setIsLoadingPlans(false);
+    }).catch(error => {
+      console.error('Error refreshing plans:', error);
+      setIsLoadingPlans(false);
+    });
+  };
+
+  // Update the renderCalendar function to improve date selection
   const renderCalendar = () => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(monthStart);
@@ -395,49 +629,52 @@ const ClientDetailsPage = () => {
     let day = startDate;
 
     for (let i = 0; i < 35; i++) {
-      const dateKey = format(day, 'yyyy-MM-dd');
-      const daySchedule = schedule[dateKey];
+      const dateStr = format(day, 'yyyy-MM-dd');
+      const dayEvents = calendarEvents.filter(event => event.date === dateStr);
+      const hasWorkout = dayEvents.some(e => e.type === 'workout');
+      const hasNutrition = dayEvents.some(e => e.type === 'nutrition');
+      
       const isCurrentMonth = day >= monthStart && day <= monthEnd;
+      const isSelected = selectedDate && isSameDay(day, selectedDate);
+      const isToday = isSameDay(day, new Date());
+      
+      // Create the className string properly without duplicates
+      let className = `
+        p-1 border border-gray-700 min-h-[80px] relative cursor-pointer
+        ${!isCurrentMonth ? 'bg-gray-800/50 text-gray-500' : 'bg-gray-800/80 hover:bg-gray-800'}
+        ${isSelected ? 'ring-2 ring-blue-500 bg-blue-900/20' : ''}
+        ${isToday && !isSelected ? 'border-yellow-500/50' : ''}
+        transition-all duration-150
+      `;
+      
+      // Create a copy of the date to avoid reference issues
+      const currentDay = new Date(day);
       
       days.push(
-        <motion.div 
+        <div
           key={i}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className={`bg-white dark:bg-gray-800 min-h-[100px] p-2 transform transition-all duration-200 ${
-            isCurrentMonth
-              ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:shadow-md'
-              : 'bg-gray-50 dark:bg-gray-700/50'
-          } ${
-            isSameDay(day, selectedDate)
-              ? 'ring-2 ring-blue-500 dark:ring-blue-400'
-              : ''
-          }`}
-          onClick={() => isCurrentMonth && handleDayClick(day)}
+          className={className}
+          onClick={() => handleDayClick(currentDay)}
         >
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-            {format(day, 'd')}
-          </div>
-          {daySchedule && (
-            <div className="space-y-1">
-              {daySchedule.workout && (
-                <div className="flex items-center text-xs text-blue-600 dark:text-blue-400">
-                  <Dumbbell className="w-3 h-3 mr-1" />
-                  <span className="text-[10px]">{daySchedule.workout.type}</span>
-                </div>
+          <div className="flex justify-between items-start">
+            <span className={`text-sm font-medium p-1 ${isToday ? 'bg-yellow-500 text-black rounded-full w-6 h-6 flex items-center justify-center' : ''}`}>
+              {format(day, 'd')}
+            </span>
+            <div className="flex space-x-1">
+              {hasWorkout && (
+                <span className="bg-blue-500 w-2 h-2 rounded-full" title="Workout scheduled"></span>
               )}
-              {daySchedule.nutrition && (
-                <div className="flex items-center text-xs text-green-600 dark:text-green-400">
-                  <Apple className="w-3 h-3 mr-1" />
-                  <span className="text-[10px]">{daySchedule.nutrition.type}</span>
-                </div>
+              {hasNutrition && (
+                <span className="bg-green-500 w-2 h-2 rounded-full" title="Nutrition plan"></span>
               )}
             </div>
-          )}
-        </motion.div>
+          </div>
+        </div>
       );
+      
       day = addDays(day, 1);
     }
+    
     return days;
   };
 
@@ -496,133 +733,256 @@ const ClientDetailsPage = () => {
         </div>
       </motion.div>
 
-      {/* Program Schedule with animation */}
+      {/* Enhanced Client Schedule Section */}
       <motion.div 
-        className="mb-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4"
+        className="mb-6 bg-gray-900 rounded-xl shadow-lg overflow-hidden border border-gray-700"
         variants={calendarTransition}
       >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Program Schedule
-          </h2>
-          <div className="flex items-center space-x-2">
-            <button 
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              onClick={handlePreviousMonth}
-            >
-              <ChevronLeft className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-            </button>
-            <span className="text-sm font-medium text-gray-900 dark:text-white">
-              {format(currentMonth, 'MMMM yyyy')}
-            </span>
-            <button 
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              onClick={handleNextMonth}
-            >
-              <ChevronRight className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-            </button>
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-4 border-b border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <CalendarIcon className="w-5 h-5 text-white" />
+              <h2 className="text-lg font-semibold text-white">
+                Client Training Schedule
+              </h2>
+            </div>
+            <div className="flex items-center space-x-2 bg-white/10 rounded-lg px-2 py-1">
+              <button
+                onClick={handlePreviousMonth}
+                className="p-1 text-white/80 hover:text-white transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className="text-white font-medium px-2">
+                {format(currentMonth, 'MMMM yyyy')}
+              </span>
+              <button
+                onClick={handleNextMonth}
+                className="p-1 text-white/80 hover:text-white transition-colors"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Calendar Grid with hover animations */}
-        <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
-          {/* Week days header */}
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-            <div key={day} className="bg-gray-50 dark:bg-gray-800 py-1.5 text-center">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+        
+        {/* Calendar Grid */}
+        <div className="p-4 bg-gray-900/90">
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="text-center text-gray-300 text-xs font-medium py-2 border-b border-gray-700">
                 {day}
-              </span>
-            </div>
-          ))}
+              </div>
+            ))}
+          </div>
           
-          {/* Calendar days with hover effect */}
-          {renderCalendar()}
+          <div className="grid grid-cols-7 gap-1">
+            {renderCalendar()}
+          </div>
         </div>
-
-        {/* Selected Day Details with animation */}
-        <motion.div 
-          className="mt-6 grid grid-cols-2 gap-4"
-          variants={staggerChildren}
-        >
-          <motion.div 
-            variants={fadeInUp}
-            className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 transform transition-all duration-200 hover:shadow-md"
-          >
-            <div className="flex items-center mb-2">
-              <Dumbbell className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
-              <h4 className="text-xs font-medium text-blue-900 dark:text-blue-200">
-                Workout Plan - {selectedDate.toLocaleDateString()}
-              </h4>
+        
+        {/* Selected Date Schedule */}
+        {selectedDate && !isEditingPlan && (
+          <div className="border-t border-gray-700 p-4 bg-gray-900/80">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white flex items-center">
+                <CalendarIcon className="w-5 h-5 mr-2 text-blue-400" />
+                {format(new Date(selectedDate), 'MMMM d, yyyy')}
+              </h3>
+              <button
+                onClick={handleEditPlan}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center transition-colors"
+                disabled={isLoadingPlans}
+              >
+                {isLoadingPlans ? (
+                  <Loader className="w-4 h-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Pencil className="w-4 h-4 mr-1.5" />
+                )}
+                Edit Plan
+              </button>
             </div>
-            <div className="text-xs text-blue-800 dark:text-blue-300">
-              {selectedDaySchedule?.workout && (
-                <>
-                  <p>{selectedDaySchedule.workout.type}</p>
-                  <ul className="list-disc list-inside mt-1 space-y-0.5 text-[10px]">
-                    {selectedDaySchedule.workout.exercises.map((exercise, index) => (
-                      <li key={index}>{exercise}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-          </motion.div>
-
-          <motion.div 
-            variants={fadeInUp}
-            className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
-                <Apple className="w-4 h-4 text-green-600 dark:text-green-400 mr-2" />
-                <h4 className="text-xs font-medium text-green-900 dark:text-green-200">
-                  Nutrition Plan - {selectedDate.toLocaleDateString()}
-                </h4>
+            
+            {isLoadingPlans ? (
+              <div className="flex justify-center items-center py-20">
+                <div className="flex flex-col items-center">
+                  <Loader className="w-8 h-8 text-blue-500 animate-spin mb-2" />
+                  <p className="text-gray-400">Loading plans...</p>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-medium text-green-600 dark:text-green-400">
-                  {selectedDaySchedule?.nutrition?.totalCalories} kcal
-                </span>
-              </div>
-            </div>
-            <div className="text-xs text-green-800 dark:text-green-300">
-              {selectedDaySchedule?.nutrition && (
-                <>
-                  <p>{selectedDaySchedule.nutrition.type}</p>
-                  <div className="mt-1 space-y-1 text-[10px]">
-                    {selectedDaySchedule.nutrition.meals.map((meal, index) => (
-                      <div key={index}>
-                        <div className="flex justify-between items-center">
-                          <p className="font-medium">{meal.name}:</p>
-                          <span className="text-green-600 dark:text-green-400">{meal.calories} kcal</span>
-                        </div>
-                        <p>{meal.description}</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Workout Plan */}
+                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 hover:border-blue-500/50 transition-colors shadow-md">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center">
+                      <div className="bg-blue-500/20 p-2.5 rounded-lg mr-3">
+                        <Dumbbell className="w-5 h-5 text-blue-500" />
                       </div>
-                    ))}
-                    <div className="mt-2 pt-2 border-t border-green-200 dark:border-green-700">
-                      <div className="flex justify-between text-[10px] text-green-700 dark:text-green-300">
-                        <div>
-                          <span className="font-medium">Protein:</span> {selectedDaySchedule.nutrition.macros.protein}g
-                        </div>
-                        <div>
-                          <span className="font-medium">Carbs:</span> {selectedDaySchedule.nutrition.macros.carbs}g
-                        </div>
-                        <div>
-                          <span className="font-medium">Fats:</span> {selectedDaySchedule.nutrition.macros.fats}g
-                        </div>
-                      </div>
+                      <h4 className="font-medium text-white text-lg">Workout Plan</h4>
                     </div>
+                    {!selectedWorkout && (
+                      <button
+                        onClick={handleEditPlan}
+                        className="text-blue-500 hover:text-blue-400 flex items-center text-sm bg-blue-500/10 px-2 py-1 rounded-lg transition-colors"
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Add
+                      </button>
+                    )}
                   </div>
-                </>
-              )}
-            </div>
-          </motion.div>
-        </motion.div>
+                  
+                  {selectedWorkout ? (
+                    <div>
+                      <h5 className="text-white font-medium text-lg mb-3 border-b border-gray-700 pb-2">{selectedWorkout.name}</h5>
+                      <div className="space-y-3">
+                        {selectedWorkout.exercises.map((exercise, index) => (
+                          <div key={index} className="bg-gray-700/30 rounded-lg p-3 hover:bg-gray-700/50 transition-colors">
+                            <div className="flex justify-between">
+                              <span className="text-white font-medium">{exercise.name}</span>
+                              <span className="text-gray-300 text-sm">
+                                {exercise.sets} sets • {exercise.reps}
+                              </span>
+                            </div>
+                            <div className="flex justify-between mt-1">
+                              <span className="text-gray-400 text-sm">Weight: {exercise.weight}</span>
+                              {exercise.completed && (
+                                <span className="text-green-400 text-xs flex items-center">
+                                  <CheckCircle className="w-3 h-3 mr-1" /> Completed
+                                </span>
+                              )}
+                            </div>
+                            {exercise.notes && (
+                              <p className="text-gray-400 text-xs mt-2 bg-gray-800/50 p-2 rounded">{exercise.notes}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {selectedWorkout.notes && (
+                        <div className="mt-4 p-3 bg-gray-700/20 rounded-lg border-l-2 border-blue-500">
+                          <p className="text-sm text-gray-300">{selectedWorkout.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10 text-gray-400 bg-gray-800/20 rounded-lg border border-dashed border-gray-700">
+                      <Dumbbell className="w-8 h-8 mx-auto mb-2 text-gray-600" />
+                      <p>No workout plan for this day</p>
+                      <button
+                        onClick={handleEditPlan}
+                        className="mt-3 text-blue-500 hover:text-blue-400 text-sm underline"
+                      >
+                        Create workout plan
+                      </button>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Nutrition Plan */}
+                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 hover:border-green-500/50 transition-colors shadow-md">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center">
+                      <div className="bg-green-500/20 p-2.5 rounded-lg mr-3">
+                        <Apple className="w-5 h-5 text-green-500" />
+                      </div>
+                      <h4 className="font-medium text-white text-lg">Nutrition Plan</h4>
+                    </div>
+                    {!selectedNutrition && (
+                      <button
+                        onClick={handleEditPlan}
+                        className="text-green-500 hover:text-green-400 flex items-center text-sm bg-green-500/10 px-2 py-1 rounded-lg transition-colors"
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Add
+                      </button>
+                    )}
+                  </div>
+                  
+                  {selectedNutrition ? (
+                    <div>
+                      <div className="grid grid-cols-3 gap-3 mb-4">
+                        <div className="bg-gray-700/30 rounded-lg p-3 text-center">
+                          <p className="text-gray-400 text-xs uppercase tracking-wider">Total Calories</p>
+                          <p className="text-white font-semibold text-lg mt-1">{selectedNutrition.totalCalories}</p>
+                        </div>
+                        <div className="bg-gray-700/30 rounded-lg p-3 text-center">
+                          <p className="text-gray-400 text-xs uppercase tracking-wider">Protein</p>
+                          <p className="text-white font-semibold text-lg mt-1">{selectedNutrition.macros.protein}g</p>
+                        </div>
+                        <div className="bg-gray-700/30 rounded-lg p-3 text-center">
+                          <p className="text-gray-400 text-xs uppercase tracking-wider">Carbs / Fats</p>
+                          <p className="text-white font-semibold text-lg mt-1">
+                            {selectedNutrition.macros.carbs}g / {selectedNutrition.macros.fat}g
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {selectedNutrition.meals.map((meal, index) => (
+                          <div key={index} className="bg-gray-700/30 rounded-lg p-3 hover:bg-gray-700/50 transition-colors">
+                            <div className="flex justify-between">
+                              <span className="text-white font-medium">{meal.name}</span>
+                              <span className="text-gray-300 text-sm bg-gray-800/50 px-2 py-0.5 rounded-full">
+                                {meal.calories} cal
+                              </span>
+                            </div>
+                            <p className="text-gray-400 text-sm mt-1">{meal.description}</p>
+                            <div className="flex justify-between mt-2">
+                              <div className="flex space-x-3 text-xs text-gray-400">
+                                <span className="bg-gray-800/50 px-2 py-0.5 rounded-full">P: {meal.protein}g</span>
+                                <span className="bg-gray-800/50 px-2 py-0.5 rounded-full">C: {meal.carbs}g</span>
+                                <span className="bg-gray-800/50 px-2 py-0.5 rounded-full">F: {meal.fat}g</span>
+                              </div>
+                              {meal.completed && (
+                                <span className="text-green-400 text-xs flex items-center">
+                                  <CheckCircle className="w-3 h-3 mr-1" /> Completed
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {selectedNutrition.notes && (
+                        <div className="mt-4 p-3 bg-gray-700/20 rounded-lg border-l-2 border-green-500">
+                          <p className="text-sm text-gray-300">{selectedNutrition.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10 text-gray-400 bg-gray-800/20 rounded-lg border border-dashed border-gray-700">
+                      <Apple className="w-8 h-8 mx-auto mb-2 text-gray-600" />
+                      <p>No nutrition plan for this day</p>
+                      <button
+                        onClick={handleEditPlan}
+                        className="mt-3 text-green-500 hover:text-green-400 text-sm underline"
+                      >
+                        Create nutrition plan
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Plan Editor */}
+        {selectedDate && isEditingPlan && clientId && (
+          <div className="border-t border-gray-700">
+            <PlanEditor
+              clientId={clientId}
+              selectedDate={selectedDate}
+              onSave={handleSavePlan}
+              onCancel={() => setIsEditingPlan(false)}
+            />
+          </div>
+        )}
       </motion.div>
 
       {/* Other Information with stagger animation */}
       <motion.div 
-        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+        className="grid grid-cols-1 md:grid-cols-3 gap-6"
         variants={staggerChildren}
       >
         {/* Client Info & Goals */}

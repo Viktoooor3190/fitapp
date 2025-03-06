@@ -9,28 +9,13 @@ import {
   MessageCircle, ChevronRight
 } from 'lucide-react';
 import ChatFold from '../../components/chat/ChatFold';
-
-interface Exercise {
-  name: string;
-  sets: number;
-  reps: string;
-  completed: boolean;
-}
+import { getTodaysPlans, WorkoutPlan, NutritionPlan, Exercise, Meal, updateWorkoutExerciseStatus, updateMealStatus } from '../../firebase/fitnessData';
 
 interface UserData {
   name: string;
   email: string;
   fitnessGoals?: string;
   experienceLevel?: string;
-  todaysWorkout?: {
-    name: string;
-    exercises: Exercise[];
-  };
-  todaysNutrition?: {
-    meals: string[];
-    calories: number;
-    protein: number;
-  };
 }
 
 const UserDashboard = () => {
@@ -38,6 +23,8 @@ const UserDashboard = () => {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [todayWorkout, setTodayWorkout] = useState<WorkoutPlan | null>(null);
+  const [todayNutrition, setTodayNutrition] = useState<NutritionPlan | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -48,9 +35,17 @@ const UserDashboard = () => {
           return;
         }
 
+        // Fetch user data
         const userDoc = await getDoc(doc(db, 'clients', user.uid));
         if (userDoc.exists()) {
           setUserData(userDoc.data() as UserData);
+        }
+
+        // Fetch today's workout and nutrition plans
+        const todayResult = await getTodaysPlans(user.uid);
+        if (todayResult.success) {
+          setTodayWorkout(todayResult.workout || null);
+          setTodayNutrition(todayResult.nutrition || null);
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -61,6 +56,55 @@ const UserDashboard = () => {
 
     fetchUserData();
   }, [navigate]);
+
+  const handleExerciseStatusChange = async (exerciseIndex: number, completed: boolean) => {
+    if (!todayWorkout || !auth.currentUser) return;
+    
+    try {
+      await updateWorkoutExerciseStatus(
+        auth.currentUser.uid,
+        todayWorkout.date,
+        exerciseIndex,
+        completed
+      );
+      
+      // Update local state
+      setTodayWorkout(prev => {
+        if (!prev) return null;
+        const updatedExercises = [...prev.exercises];
+        updatedExercises[exerciseIndex] = { 
+          ...updatedExercises[exerciseIndex], 
+          completed 
+        };
+        return { ...prev, exercises: updatedExercises };
+      });
+    } catch (error) {
+      console.error('Error updating exercise status:', error);
+    }
+  };
+
+  const handleMealStatusChange = async (mealIndex: number, completed: boolean) => {
+    if (!todayNutrition || !auth.currentUser) return;
+    
+    try {
+      await updateMealStatus(
+        auth.currentUser.uid,
+        todayNutrition.date,
+        mealIndex,
+        completed
+      );
+      
+      // Update local state
+      setTodayNutrition(prev => {
+        if (!prev) return null;
+        const updatedMeals = [...prev.meals];
+        updatedMeals[mealIndex] = { ...updatedMeals[mealIndex], completed };
+        return { ...prev, meals: updatedMeals };
+      });
+    } catch (error) {
+      console.error('Error updating meal status:', error);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -99,7 +143,9 @@ const UserDashboard = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Today's Workout</p>
-                  <h3 className="text-xl font-semibold text-white mt-1">Upper Body</h3>
+                  <h3 className="text-xl font-semibold text-white mt-1">
+                    {todayWorkout ? todayWorkout.name : 'Rest Day'}
+                  </h3>
                 </div>
                 <div className="bg-blue-500/20 p-2.5 rounded-lg">
                   <Dumbbell className="w-5 h-5 text-blue-500" />
@@ -115,11 +161,13 @@ const UserDashboard = () => {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm">Next Session</p>
-                  <h3 className="text-xl font-semibold text-white mt-1">Tomorrow, 10 AM</h3>
+                  <p className="text-gray-400 text-sm">Nutrition</p>
+                  <h3 className="text-xl font-semibold text-white mt-1">
+                    {todayNutrition ? `${todayNutrition.totalCalories} calories` : 'No plan set'}
+                  </h3>
                 </div>
                 <div className="bg-green-500/20 p-2.5 rounded-lg">
-                  <Calendar className="w-5 h-5 text-green-500" />
+                  <Apple className="w-5 h-5 text-green-500" />
                 </div>
               </div>
             </motion.div>
@@ -133,7 +181,9 @@ const UserDashboard = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Progress</p>
-                  <h3 className="text-xl font-semibold text-white mt-1">75%</h3>
+                  <h3 className="text-xl font-semibold text-white mt-1">
+                    {calculateProgress()}%
+                  </h3>
                 </div>
                 <div className="bg-purple-500/20 p-2.5 rounded-lg">
                   <Activity className="w-5 h-5 text-purple-500" />
@@ -144,7 +194,7 @@ const UserDashboard = () => {
 
           {/* Workout and Nutrition Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-            {/* Upper Body Workout Section */}
+            {/* Workout Section */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -152,35 +202,60 @@ const UserDashboard = () => {
               className="bg-gray-800 rounded-xl p-4"
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">Upper Body Workout</h2>
+                <h2 className="text-lg font-semibold text-white">
+                  {todayWorkout ? todayWorkout.name : "No Workout Today"}
+                </h2>
                 <div className="bg-blue-500/20 p-2 rounded-lg">
                   <Dumbbell className="w-5 h-5 text-blue-500" />
                 </div>
               </div>
-              <div className="space-y-3">
-                {[
-                  { name: 'Bench Press', sets: 4, reps: '12, 10, 10, 8', completed: false },
-                  { name: 'Shoulder Press', sets: 4, reps: '12, 10, 10, 8', completed: false },
-                  { name: 'Lat Pulldowns', sets: 3, reps: '12, 12, 10', completed: false },
-                  { name: 'Bicep Curls', sets: 3, reps: '12, 12, 12', completed: false }
-                ].map((exercise, index) => (
-                  <div 
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg"
-                  >
-                    <div>
-                      <h3 className="text-white font-medium">{exercise.name}</h3>
-                      <p className="text-sm text-gray-400">
-                        {exercise.sets} sets • {exercise.reps} reps
-                      </p>
+              
+              {todayWorkout ? (
+                <div className="space-y-3">
+                  {todayWorkout.exercises.map((exercise, index) => (
+                    <div 
+                      key={index}
+                      className={`
+                        flex items-center justify-between p-3 bg-gray-700/50 rounded-lg
+                        ${exercise.completed ? 'border-l-4 border-green-500' : ''}
+                      `}
+                    >
+                      <div>
+                        <h3 className="text-white font-medium">{exercise.name}</h3>
+                        <p className="text-sm text-gray-400">
+                          {exercise.sets} sets • {exercise.reps} reps • {exercise.weight}
+                        </p>
+                        {exercise.notes && (
+                          <p className="text-xs text-gray-500 mt-1">{exercise.notes}</p>
+                        )}
+                      </div>
+                      <input 
+                        type="checkbox"
+                        checked={exercise.completed}
+                        onChange={e => handleExerciseStatusChange(index, e.target.checked)}
+                        className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
+                      />
                     </div>
-                    <input 
-                      type="checkbox"
-                      className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
-                    />
-                  </div>
-                ))}
-              </div>
+                  ))}
+                  
+                  {todayWorkout.notes && (
+                    <div className="mt-3 p-3 bg-gray-700/30 rounded-lg">
+                      <p className="text-sm text-gray-400">{todayWorkout.notes}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 text-center">
+                  <p className="text-gray-400 mb-3">No workout planned for today.</p>
+                  <button 
+                    onClick={() => navigate('/user/calendar')}
+                    className="text-blue-400 flex items-center hover:text-blue-300 transition-colors"
+                  >
+                    <Calendar className="w-4 h-4 mr-1" />
+                    Check your calendar
+                  </button>
+                </div>
+              )}
             </motion.div>
 
             {/* Nutrition Section */}
@@ -196,47 +271,79 @@ const UserDashboard = () => {
                   <Apple className="w-5 h-5 text-green-500" />
                 </div>
               </div>
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                    <p className="text-gray-400 text-sm">Calories</p>
-                    <p className="text-white font-semibold mt-1">2,400</p>
-                  </div>
-                  <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                    <p className="text-gray-400 text-sm">Protein</p>
-                    <p className="text-white font-semibold mt-1">180g</p>
-                  </div>
-                  <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                    <p className="text-gray-400 text-sm">Progress</p>
-                    <p className="text-white font-semibold mt-1">75%</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {[
-                    'Oatmeal with protein shake',
-                    'Chicken breast with rice',
-                    'Post-workout smoothie',
-                    'Salmon with vegetables'
-                  ].map((meal, index) => (
-                    <div 
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg"
-                    >
-                      <span className="text-white">{meal}</span>
-                      <input 
-                        type="checkbox"
-                        className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-green-500 focus:ring-green-500 focus:ring-offset-gray-800"
-                      />
+              
+              {todayNutrition ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                      <p className="text-gray-400 text-xs">Calories</p>
+                      <p className="text-white font-semibold mt-1">{todayNutrition.totalCalories}</p>
                     </div>
-                  ))}
+                    <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                      <p className="text-gray-400 text-xs">Protein</p>
+                      <p className="text-white font-semibold mt-1">{todayNutrition.macros.protein}g</p>
+                    </div>
+                    <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                      <p className="text-gray-400 text-xs">Carbs/Fats</p>
+                      <p className="text-white font-semibold mt-1">
+                        {todayNutrition.macros.carbs}g / {todayNutrition.macros.fat}g
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {todayNutrition.meals.map((meal, index) => (
+                      <div 
+                        key={index}
+                        className={`
+                          flex items-center justify-between p-3 bg-gray-700/50 rounded-lg
+                          ${meal.completed ? 'border-l-4 border-green-500' : ''}
+                        `}
+                      >
+                        <div>
+                          <div className="flex items-center">
+                            <h3 className="text-white font-medium">{meal.name}</h3>
+                            <span className="text-sm text-gray-400 ml-2">({meal.calories} cal)</span>
+                          </div>
+                          <p className="text-sm text-gray-400">{meal.description}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            P: {meal.protein}g • C: {meal.carbs}g • F: {meal.fat}g
+                          </p>
+                        </div>
+                        <input 
+                          type="checkbox"
+                          checked={meal.completed}
+                          onChange={e => handleMealStatusChange(index, e.target.checked)}
+                          className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-green-500 focus:ring-green-500 focus:ring-offset-gray-800"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {todayNutrition.notes && (
+                    <div className="mt-3 p-3 bg-gray-700/30 rounded-lg">
+                      <p className="text-sm text-gray-400">{todayNutrition.notes}</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 text-center">
+                  <p className="text-gray-400 mb-3">No nutrition plan for today.</p>
+                  <button 
+                    onClick={() => navigate('/user/calendar')}
+                    className="text-green-400 flex items-center hover:text-green-300 transition-colors"
+                  >
+                    <Calendar className="w-4 h-4 mr-1" />
+                    Check your calendar
+                  </button>
                 </div>
-              </div>
+              )}
             </motion.div>
           </div>
         </motion.div>
       </div>
 
-      {/* Fixed Chat Button and Fold - Remains the same */}
+      {/* Chat Button */}
       <div className="fixed bottom-6 right-6 z-50">
         <div className="relative">
           {/* Notification Badge */}
@@ -248,23 +355,27 @@ const UserDashboard = () => {
           <motion.button
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => setIsChatOpen(!isChatOpen)}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-3 shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110"
+            className="bg-blue-600 text-white rounded-full p-3 shadow-lg"
           >
-            <MessageCircle className="w-6 h-6" />
+            <MessageSquare className="w-6 h-6" />
           </motion.button>
-
-          {/* Chat Fold - Position it above the button */}
-          <div className="absolute bottom-full right-0 mb-4 w-[350px]">
-            <ChatFold 
-              isOpen={isChatOpen} 
-              onClose={() => setIsChatOpen(false)} 
-            />
-          </div>
         </div>
+        
+        {/* Chat Widget */}
+        <ChatFold isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
       </div>
     </div>
   );
 };
+
+// Helper function to calculate completion percentage
+function calculateProgress() {
+  // In a real app, this would calculate based on completed exercises and meals
+  // For now, we'll return a static value
+  return 75;
+}
 
 export default UserDashboard; 
