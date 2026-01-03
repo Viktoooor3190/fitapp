@@ -13,7 +13,8 @@ import {
   recordSessionCompletedActivity
 } from './activity';
 import { weeklyReportsUpdate } from './updateReports';
-import { generateWorkoutPlan, generateNutritionPlan, checkTypeformCompletion, autoGeneratePlans } from './aiPlans';
+import { generateWorkoutPlan, generateNutritionPlan, checkTypeformCompletion, autoGeneratePlans, createWorkoutPrompt, callOpenAI, parseWorkoutPlanResponse, createNutritionPrompt, parseNutritionPlanResponse, fetchUserProfileFromFirestore, UserProfile } from './aiPlans';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 interface UserData {
   email: string;
@@ -34,11 +35,141 @@ export {
   weeklyReportsUpdate
 };
 
-// Export AI plan generation functions with CORS support
-export const aiGenerateWorkoutPlan = generateWorkoutPlan;
-export const aiGenerateNutritionPlan = generateNutritionPlan;
-export const aiCheckTypeformCompletion = checkTypeformCompletion;
-export const aiAutoGeneratePlans = autoGeneratePlans;
+// Export AI plan generation functions with callable versions
+export const aiGenerateWorkoutPlanHttp = generateWorkoutPlan;
+export const aiGenerateNutritionPlanHttp = generateNutritionPlan;
+export const aiCheckTypeformCompletionHttp = checkTypeformCompletion;
+export const aiAutoGeneratePlansHttp = autoGeneratePlans;
+
+// New callable versions
+export const aiGenerateWorkoutPlan = onCall(async (data) => {
+  try {
+    const { userId, date } = data.data;
+    
+    if (!userId || !date) {
+      throw new Error('The function requires userId and date parameters.');
+    }
+
+    // We'll reuse the existing utility functions from aiPlans.ts
+    // Fetch user profile from Firestore (Typeform data)
+    const userProfile = await fetchUserProfileFromFirestore(userId);
+    
+    if (!userProfile) {
+      throw new Error('User profile data not found. Please ensure the user has completed the Typeform questionnaire.');
+    }
+    
+    // Format the prompt for the AI and call OpenAI
+    const workoutPlan = await generatePlan(userProfile, date, 'workout');
+    
+    return { success: true, data: workoutPlan };
+  } catch (error) {
+    console.error('Error in aiGenerateWorkoutPlan callable:', error);
+    throw new Error('Failed to generate workout plan');
+  }
+});
+
+export const aiGenerateNutritionPlan = onCall(async (data) => {
+  try {
+    const { userId, date } = data.data;
+    
+    if (!userId || !date) {
+      throw new Error('The function requires userId and date parameters.');
+    }
+
+    // We'll reuse the existing utility functions from aiPlans.ts
+    // Fetch user profile from Firestore (Typeform data)
+    const userProfile = await fetchUserProfileFromFirestore(userId);
+    
+    if (!userProfile) {
+      throw new Error('User profile data not found. Please ensure the user has completed the Typeform questionnaire.');
+    }
+    
+    // Format the prompt for the AI and call OpenAI
+    const nutritionPlan = await generatePlan(userProfile, date, 'nutrition');
+    
+    return { success: true, data: nutritionPlan };
+  } catch (error) {
+    console.error('Error in aiGenerateNutritionPlan callable:', error);
+    throw new Error('Failed to generate nutrition plan');
+  }
+});
+
+export const aiCheckTypeformCompletion = onCall(async (data) => {
+  try {
+    const { userId } = data.data;
+    
+    if (!userId) {
+      throw new Error('The function requires a userId parameter.');
+    }
+
+    const userProfile = await fetchUserProfileFromFirestore(userId);
+    
+    return { 
+      success: true, 
+      hasCompletedTypeform: !!userProfile,
+      profileData: userProfile ? {
+        age: userProfile.age,
+        weight: userProfile.weight,
+        height: userProfile.height,
+        gender: userProfile.gender,
+        fitnessLevel: userProfile.fitnessLevel,
+        fitnessGoalsCount: (userProfile.fitnessGoals || []).length,
+        dietaryRestrictionsCount: (userProfile.dietaryRestrictions || []).length,
+        healthConditionsCount: (userProfile.healthConditions || []).length
+      } : null
+    };
+  } catch (error) {
+    console.error('Error in aiCheckTypeformCompletion callable:', error);
+    throw new Error('Failed to check typeform completion');
+  }
+});
+
+// Helper function to generate plans
+async function generatePlan(userProfile: UserProfile, date: string, type: 'workout' | 'nutrition') {
+  try {
+    // Get Firestore database
+    const db = getFirestore();
+    const userId = userProfile.userId;
+    
+    // Create the appropriate prompt based on type
+    let prompt, aiResponse, plan;
+    
+    if (type === 'workout') {
+      prompt = createWorkoutPrompt(userProfile, date);
+      aiResponse = await callOpenAI(prompt, "workout");
+      if (!aiResponse) {
+        throw new Error('Failed to get AI response for workout plan');
+      }
+      plan = parseWorkoutPlanResponse(aiResponse, date);
+      
+      // Save to Firestore
+      await db.collection('workoutPlans').doc(`${userId}/plans/${date}`).set({
+        ...plan,
+        updatedAt: FieldValue.serverTimestamp(),
+        aiGenerated: true
+      });
+    } else if (type === 'nutrition') {
+      prompt = createNutritionPrompt(userProfile, date);
+      aiResponse = await callOpenAI(prompt, "nutrition");
+      if (!aiResponse) {
+        throw new Error('Failed to get AI response for nutrition plan');
+      }
+      plan = parseNutritionPlanResponse(aiResponse, date);
+      
+      // Save to Firestore
+      await db.collection('nutritionPlans').doc(`${userId}/plans/${date}`).set({
+        ...plan,
+        updatedAt: FieldValue.serverTimestamp(),
+        aiGenerated: true
+      });
+    }
+    
+    return plan;
+  } catch (error) {
+    console.error(`Error generating ${type} plan:`, error);
+    throw error;
+  }
+}
 
 // Manual reports update function for coaches to trigger
 export const manualReportsUpdate = onCall(async (request) => {

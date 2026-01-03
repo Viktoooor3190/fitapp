@@ -1,12 +1,12 @@
 {
   "projects": {
-    "default": "fitapp-67d8e"
+    "default": "fitapp-2863e"
   },
   "targets": {
-    "fitapp-67d8e": {
+    "fitapp-2863e": {
       "hosting": {
         "coaches": [
-          "fitapp-67d8e"
+          "fitapp-2863e"
         ]
       }
     }

@@ -51,20 +51,22 @@ const AIPlanner: React.FC<AIPlannerProps> = ({ clientId, onPlanGenerated }) => {
       setIsCheckingTypeform(true);
       
       try {
-        // Using HTTP endpoint instead of callable function
-        const response = await axios.post(
-          'https://us-central1-fitness-app-c3a9a.cloudfunctions.net/aiCheckTypeformCompletion',
-          { userId: clientId }
-        );
+        // Using Firebase callable function
+        const checkTypeformFunction = httpsCallable(functions, 'aiCheckTypeformCompletion');
+        const response = await checkTypeformFunction({ userId: clientId });
         
-        // Set typeform status from response data
-        setTypeformStatus(response.data as TypeformStatus);
+        // Access data from the callable function response
+        const result = response.data as any;
+        
+        setTypeformStatus({
+          hasCompletedTypeform: result.hasCompletedTypeform,
+          profileData: result.profileData
+        });
       } catch (error) {
         console.error('Error checking Typeform completion:', error);
-        toast({
-          title: "Error",
-          description: "Failed to check if the client has completed the Typeform questionnaire.",
-          variant: "destructive"
+        setTypeformStatus({
+          hasCompletedTypeform: false,
+          profileData: null
         });
       } finally {
         setIsCheckingTypeform(false);
@@ -83,7 +85,7 @@ const AIPlanner: React.FC<AIPlannerProps> = ({ clientId, onPlanGenerated }) => {
       });
       return;
     }
-
+    
     if (!typeformStatus?.hasCompletedTypeform) {
       toast({
         title: "Typeform Not Completed",
@@ -96,14 +98,12 @@ const AIPlanner: React.FC<AIPlannerProps> = ({ clientId, onPlanGenerated }) => {
     setIsGeneratingWorkout(true);
     
     try {
-      // Using HTTP endpoint instead of callable function
-      const response = await axios.post(
-        'https://us-central1-fitness-app-c3a9a.cloudfunctions.net/aiGenerateWorkoutPlan',
-        {
-          userId: clientId,
-          date: selectedDate
-        }
-      );
+      // Using Firebase callable function
+      const generateWorkoutFunction = httpsCallable(functions, 'aiGenerateWorkoutPlan');
+      const response = await generateWorkoutFunction({
+        userId: clientId,
+        date: selectedDate
+      });
       
       toast({
         title: "Success!",
@@ -117,7 +117,7 @@ const AIPlanner: React.FC<AIPlannerProps> = ({ clientId, onPlanGenerated }) => {
       console.error('Error generating workout plan:', error);
       toast({
         title: "Error",
-        description: error.response?.data?.error || "Failed to generate workout plan. Please try again.",
+        description: error.message || "Failed to generate workout plan. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -147,14 +147,12 @@ const AIPlanner: React.FC<AIPlannerProps> = ({ clientId, onPlanGenerated }) => {
     setIsGeneratingNutrition(true);
     
     try {
-      // Using HTTP endpoint instead of callable function
-      const response = await axios.post(
-        'https://us-central1-fitness-app-c3a9a.cloudfunctions.net/aiGenerateNutritionPlan',
-        {
-          userId: clientId,
-          date: selectedDate
-        }
-      );
+      // Using Firebase callable function
+      const generateNutritionFunction = httpsCallable(functions, 'aiGenerateNutritionPlan');
+      const response = await generateNutritionFunction({
+        userId: clientId,
+        date: selectedDate
+      });
       
       toast({
         title: "Success!",
@@ -168,7 +166,7 @@ const AIPlanner: React.FC<AIPlannerProps> = ({ clientId, onPlanGenerated }) => {
       console.error('Error generating nutrition plan:', error);
       toast({
         title: "Error",
-        description: error.response?.data?.error || "Failed to generate nutrition plan. Please try again.",
+        description: error.message || "Failed to generate nutrition plan. Please try again.",
         variant: "destructive"
       });
     } finally {

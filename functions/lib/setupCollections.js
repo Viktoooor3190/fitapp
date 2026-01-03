@@ -44,7 +44,7 @@ exports.setupUserCollections = (0, firestore_1.onDocumentCreated)('coaches/{user
         const sessionsRef = admin_1.db.collection('sessions').doc(`template_${uid}`);
         batch.set(sessionsRef, {
             coachId: uid,
-            clientId: "",
+            clientId: "", // No specific client reference
             date: "",
             time: "",
             type: "Training",
@@ -57,7 +57,7 @@ exports.setupUserCollections = (0, firestore_1.onDocumentCreated)('coaches/{user
         const messagesRef = admin_1.db.collection('messages').doc(`template_${uid}`);
         batch.set(messagesRef, {
             coachId: uid,
-            clientId: "",
+            clientId: "", // No specific client reference
             messages: [
                 {
                     sender: "system",
@@ -73,7 +73,7 @@ exports.setupUserCollections = (0, firestore_1.onDocumentCreated)('coaches/{user
         const revenueRef = admin_1.db.collection('revenue').doc(`template_${uid}`);
         batch.set(revenueRef, {
             coachId: uid,
-            clientId: "",
+            clientId: "", // No specific client reference
             amount: 0,
             date: timestamp,
             status: "Template",

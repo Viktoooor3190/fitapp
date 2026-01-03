@@ -1,24 +1,42 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.autoGeneratePlans = exports.checkTypeformCompletion = exports.generateNutritionPlan = exports.generateWorkoutPlan = void 0;
+exports.createWorkoutPrompt = createWorkoutPrompt;
+exports.createNutritionPrompt = createNutritionPrompt;
+exports.callOpenAI = callOpenAI;
+exports.parseWorkoutPlanResponse = parseWorkoutPlanResponse;
+exports.parseNutritionPlanResponse = parseNutritionPlanResponse;
+exports.fetchUserProfileFromFirestore = fetchUserProfileFromFirestore;
 const functions = require("firebase-functions");
 const openai_1 = require("openai");
 const cors = require("cors");
 const firestore_1 = require("firebase-admin/firestore");
 const firestore_2 = require("firebase-functions/v2/firestore");
-// Initialize CORS middleware
-const corsHandler = cors({ origin: true });
 // Initialize OpenAI client with a default key for deployment
 // In production, replace with your actual OpenAI API key
 const openai = new openai_1.default({
     apiKey: process.env.OPENAI_API_KEY || 'sk-dummy-key-for-deployment',
 });
+// Initialize CORS middleware
+const corsMiddleware = cors({
+    origin: ['http://localhost:3000', 'https://fitness-app-c3a9a.web.app', 'https://fitness-app-c3a9a.firebaseapp.com'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    credentials: true,
+    maxAge: 86400 // 24 hours in seconds
+});
 /**
  * Generate an AI workout plan based on user profile and preferences
  */
 exports.generateWorkoutPlan = functions.https.onRequest((req, res) => {
-    return corsHandler(req, res, async () => {
+    // Apply CORS middleware
+    return corsMiddleware(req, res, async () => {
         try {
+            // Handle preflight OPTIONS request
+            if (req.method === 'OPTIONS') {
+                res.status(204).send('');
+                return;
+            }
             // Ensure the request method is POST
             if (req.method !== 'POST') {
                 res.status(405).send('Method Not Allowed');
@@ -86,8 +104,14 @@ exports.generateWorkoutPlan = functions.https.onRequest((req, res) => {
  * Generate an AI nutrition plan based on user profile and preferences
  */
 exports.generateNutritionPlan = functions.https.onRequest((req, res) => {
-    return corsHandler(req, res, async () => {
+    // Apply CORS middleware
+    return corsMiddleware(req, res, async () => {
         try {
+            // Handle preflight OPTIONS request
+            if (req.method === 'OPTIONS') {
+                res.status(204).send('');
+                return;
+            }
             // Ensure the request method is POST
             if (req.method !== 'POST') {
                 res.status(405).send('Method Not Allowed');
@@ -152,102 +176,164 @@ exports.generateNutritionPlan = functions.https.onRequest((req, res) => {
     });
 });
 /**
- * Create a prompt for the workout plan generation
+ * Create a prompt for the AI to generate a workout plan
  */
 function createWorkoutPrompt(userProfile, date) {
     var _a, _b, _c, _d;
-    return `
-Create a detailed workout plan for a person with the following profile:
-- Age: ${userProfile.age || 'Not specified'}
-- Weight: ${userProfile.weight ? `${userProfile.weight} kg` : 'Not specified'}
-- Height: ${userProfile.height ? `${userProfile.height} cm` : 'Not specified'}
-- Gender: ${userProfile.gender || 'Not specified'}
-- Fitness Level: ${userProfile.fitnessLevel || 'Not specified'}
-- Fitness Goals: ${((_a = userProfile.fitnessGoals) === null || _a === void 0 ? void 0 : _a.join(', ')) || 'Not specified'}
-- Health Conditions: ${((_b = userProfile.healthConditions) === null || _b === void 0 ? void 0 : _b.join(', ')) || 'None'}
-- Preferred Workout Duration: ${userProfile.preferredWorkoutDuration ? `${userProfile.preferredWorkoutDuration} minutes` : 'Not specified'}
-- Workout Frequency: ${userProfile.workoutFrequency ? `${userProfile.workoutFrequency} days per week` : 'Not specified'}
-- Preferred Exercises: ${((_c = userProfile.preferredExercises) === null || _c === void 0 ? void 0 : _c.join(', ')) || 'Not specified'}
-- Disliked Exercises: ${((_d = userProfile.dislikedExercises) === null || _d === void 0 ? void 0 : _d.join(', ')) || 'None'}
+    // Format the profile data into a structured prompt
+    return `Generate a personalized workout plan for ${date} based on the following user profile:
+  
+  Age: ${userProfile.age || 'Not specified'}
+  Gender: ${userProfile.gender || 'Not specified'}
+  Weight: ${userProfile.weight ? `${userProfile.weight} kg` : 'Not specified'}
+  Height: ${userProfile.height ? `${userProfile.height} cm` : 'Not specified'}
+  Fitness Level: ${userProfile.fitnessLevel || 'Beginner'}
+  Fitness Goals: ${((_a = userProfile.fitnessGoals) === null || _a === void 0 ? void 0 : _a.join(', ')) || 'General fitness'}
+  Health Conditions: ${((_b = userProfile.healthConditions) === null || _b === void 0 ? void 0 : _b.join(', ')) || 'None'}
+  Preferred Workout Duration: ${userProfile.preferredWorkoutDuration || 60} minutes
+  Workout Frequency: ${userProfile.workoutFrequency || 3} days per week
+  Preferred Exercises: ${((_c = userProfile.preferredExercises) === null || _c === void 0 ? void 0 : _c.join(', ')) || 'Not specified'}
+  Disliked Exercises: ${((_d = userProfile.dislikedExercises) === null || _d === void 0 ? void 0 : _d.join(', ')) || 'None'}
+  
+  Please create a structured workout plan with:
+  - A descriptive name for the workout
+  - A list of exercises
+  - Specific sets, reps, and weight recommendations for each exercise
+  - Proper warm-up and cool-down activities
+  - Notes for proper form and technique
 
-The workout plan is for date: ${date}
-
-Please provide a structured workout plan with the following JSON format:
-{
-  "name": "Workout Plan Name",
-  "description": "Brief description of the workout plan",
-  "exercises": [
-    {
-      "name": "Exercise Name",
-      "sets": 3,
-      "reps": "8-12",
-      "weight": "moderate",
-      "notes": "Additional instructions or tips",
-      "completed": false
-    }
-  ],
-  "notes": "Any additional notes or recommendations"
-}
-
-Make sure to include a variety of exercises targeting different muscle groups as appropriate for the user's goals and fitness level.
-`;
+  Format the response as a JSON object with the following structure:
+  {
+    "name": "Workout Name",
+    "description": "Brief description of the workout",
+    "exercises": [
+      {
+        "name": "Exercise Name",
+        "sets": 3,
+        "reps": "8-12",
+        "weight": "Moderate" or specific weight if applicable,
+        "notes": "Form tips or other notes",
+        "completed": false
+      }
+    ],
+    "notes": "Overall notes about the workout"
+  }`;
 }
 /**
- * Create a prompt for the nutrition plan generation
+ * Create a prompt for the AI to generate a nutrition plan
  */
 function createNutritionPrompt(userProfile, date) {
-    var _a, _b, _c, _d, _e;
-    return `
-Create a detailed nutrition plan for a person with the following profile:
-- Age: ${userProfile.age || 'Not specified'}
-- Weight: ${userProfile.weight ? `${userProfile.weight} kg` : 'Not specified'}
-- Height: ${userProfile.height ? `${userProfile.height} cm` : 'Not specified'}
-- Gender: ${userProfile.gender || 'Not specified'}
-- Fitness Level: ${userProfile.fitnessLevel || 'Not specified'}
-- Fitness Goals: ${((_a = userProfile.fitnessGoals) === null || _a === void 0 ? void 0 : _a.join(', ')) || 'Not specified'}
-- Dietary Restrictions: ${((_b = userProfile.dietaryRestrictions) === null || _b === void 0 ? void 0 : _b.join(', ')) || 'None'}
-- Health Conditions: ${((_c = userProfile.healthConditions) === null || _c === void 0 ? void 0 : _c.join(', ')) || 'None'}
-- Preferred Foods: ${((_d = userProfile.preferredFoods) === null || _d === void 0 ? void 0 : _d.join(', ')) || 'Not specified'}
-- Disliked Foods: ${((_e = userProfile.dislikedFoods) === null || _e === void 0 ? void 0 : _e.join(', ')) || 'None'}
-
-The nutrition plan is for date: ${date}
-
-Please provide a structured nutrition plan with the following JSON format:
-{
-  "meals": [
-    {
-      "name": "Meal Name (e.g., Breakfast)",
-      "description": "Detailed description of the meal with ingredients and preparation instructions",
-      "calories": 500,
-      "protein": 30,
-      "carbs": 50,
-      "fat": 15,
-      "completed": false
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    // Calculate approximate calorie needs based on profile (very simplified)
+    let baseCalories = 0;
+    let proteinTarget = 0;
+    // Very simplified BMR calculation
+    if (((_a = userProfile.gender) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === 'male' && userProfile.weight && userProfile.height && userProfile.age) {
+        baseCalories = Math.round(88.362 + (13.397 * userProfile.weight) + (4.799 * userProfile.height) - (5.677 * userProfile.age));
     }
-  ],
-  "totalCalories": 2000,
-  "macros": {
-    "protein": 150,
-    "carbs": 200,
-    "fat": 70
-  },
-  "notes": "Any additional dietary recommendations or tips"
-}
+    else if (((_b = userProfile.gender) === null || _b === void 0 ? void 0 : _b.toLowerCase()) === 'female' && userProfile.weight && userProfile.height && userProfile.age) {
+        baseCalories = Math.round(447.593 + (9.247 * userProfile.weight) + (3.098 * userProfile.height) - (4.330 * userProfile.age));
+    }
+    else {
+        // Default if incomplete data
+        baseCalories = 2000;
+    }
+    // Adjust based on fitness goals
+    if ((_c = userProfile.fitnessGoals) === null || _c === void 0 ? void 0 : _c.includes('weight loss')) {
+        baseCalories = Math.round(baseCalories * 0.8); // 20% deficit
+        proteinTarget = Math.round((userProfile.weight || 70) * 2); // 2g per kg for weight loss
+    }
+    else if ((_d = userProfile.fitnessGoals) === null || _d === void 0 ? void 0 : _d.includes('muscle gain')) {
+        baseCalories = Math.round(baseCalories * 1.1); // 10% surplus
+        proteinTarget = Math.round((userProfile.weight || 70) * 2.2); // 2.2g per kg for muscle gain
+    }
+    else {
+        // Maintenance
+        proteinTarget = Math.round((userProfile.weight || 70) * 1.6); // 1.6g per kg for maintenance
+    }
+    return `Generate a personalized nutrition plan for ${date} based on the following user profile:
+  
+  Age: ${userProfile.age || 'Not specified'}
+  Gender: ${userProfile.gender || 'Not specified'}
+  Weight: ${userProfile.weight ? `${userProfile.weight} kg` : 'Not specified'}
+  Height: ${userProfile.height ? `${userProfile.height} cm` : 'Not specified'}
+  Fitness Goals: ${((_e = userProfile.fitnessGoals) === null || _e === void 0 ? void 0 : _e.join(', ')) || 'General fitness'}
+  Dietary Restrictions: ${((_f = userProfile.dietaryRestrictions) === null || _f === void 0 ? void 0 : _f.join(', ')) || 'None'}
+  Health Conditions: ${((_g = userProfile.healthConditions) === null || _g === void 0 ? void 0 : _g.join(', ')) || 'None'}
+  Preferred Foods: ${((_h = userProfile.preferredFoods) === null || _h === void 0 ? void 0 : _h.join(', ')) || 'Not specified'}
+  Disliked Foods: ${((_j = userProfile.dislikedFoods) === null || _j === void 0 ? void 0 : _j.join(', ')) || 'None'}
+  
+  Target calories: approximately ${baseCalories} calories
+  Protein target: approximately ${proteinTarget}g
+  
+  Please create a structured nutrition plan with:
+  - 4-5 meals throughout the day including breakfast, lunch, dinner, and snacks
+  - Specific meal names and descriptions
+  - Detailed macronutrient breakdowns (protein, carbs, fat)
+  - Calorie counts for each meal
+  - Consideration of dietary restrictions
 
-Include at least 3-5 meals (breakfast, lunch, dinner, and snacks) with appropriate macronutrient distribution based on the user's goals.
-`;
+  Format the response as a JSON object with the following structure:
+  {
+    "meals": [
+      {
+        "name": "Meal Name",
+        "description": "Ingredients and preparation",
+        "calories": 500,
+        "protein": 30,
+        "carbs": 40,
+        "fat": 15,
+        "completed": false
+      }
+    ],
+    "totalCalories": 2000,
+    "macros": {
+      "protein": 150,
+      "carbs": 200,
+      "fat": 65
+    },
+    "notes": "Overall notes about the nutrition plan"
+  }`;
 }
 /**
- * Parse the AI response for workout plan
+ * Call OpenAI API with a prompt
+ */
+async function callOpenAI(prompt, type) {
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                {
+                    role: "system",
+                    content: type === 'workout'
+                        ? "You are a professional fitness trainer specialized in creating personalized workout plans. Provide detailed, structured workout plans based on the user's profile and preferences. Format your response as JSON."
+                        : "You are a professional nutritionist specialized in creating personalized meal plans. Provide detailed, structured nutrition plans based on the user's profile and preferences. Format your response as JSON."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
+            response_format: { type: "json_object" }
+        });
+        return response.choices[0].message.content;
+    }
+    catch (error) {
+        console.error(`Error calling OpenAI for ${type} plan:`, error);
+        return null;
+    }
+}
+/**
+ * Parse the AI response for a workout plan
  */
 function parseWorkoutPlanResponse(aiResponse, date) {
     try {
         const parsedResponse = JSON.parse(aiResponse);
-        // Ensure exercises have the completed property
-        const exercises = parsedResponse.exercises.map((exercise) => (Object.assign(Object.assign({}, exercise), { completed: false })));
+        // Ensure all exercises have the completed field
+        const exercises = (parsedResponse.exercises || []).map((exercise) => (Object.assign(Object.assign({}, exercise), { completed: false })));
         return {
             date,
-            name: parsedResponse.name || 'AI Generated Workout Plan',
+            name: parsedResponse.name || `Workout for ${date}`,
             description: parsedResponse.description || '',
             exercises,
             notes: parsedResponse.notes || '',
@@ -260,20 +346,20 @@ function parseWorkoutPlanResponse(aiResponse, date) {
     }
 }
 /**
- * Parse the AI response for nutrition plan
+ * Parse the AI response for a nutrition plan
  */
 function parseNutritionPlanResponse(aiResponse, date) {
     try {
         const parsedResponse = JSON.parse(aiResponse);
-        // Ensure meals have the completed property
-        const meals = parsedResponse.meals.map((meal) => (Object.assign(Object.assign({}, meal), { completed: false })));
-        // Calculate total calories and macros if not provided
-        let totalCalories = parsedResponse.totalCalories || 0;
-        let macros = parsedResponse.macros || { protein: 0, carbs: 0, fat: 0 };
-        if (totalCalories === 0 || !parsedResponse.totalCalories) {
+        // Ensure all meals have the completed field
+        const meals = (parsedResponse.meals || []).map((meal) => (Object.assign(Object.assign({}, meal), { completed: false })));
+        let totalCalories = parsedResponse.totalCalories;
+        let macros = parsedResponse.macros;
+        // Calculate totals if not provided
+        if (!totalCalories) {
             totalCalories = meals.reduce((sum, meal) => sum + meal.calories, 0);
         }
-        if (!parsedResponse.macros) {
+        if (!macros) {
             macros = {
                 protein: meals.reduce((sum, meal) => sum + meal.protein, 0),
                 carbs: meals.reduce((sum, meal) => sum + meal.carbs, 0),
@@ -313,6 +399,7 @@ async function fetchUserProfileFromFirestore(userId) {
         }
         // Map Typeform responses to UserProfile structure
         const userProfile = {
+            userId, // Add userId to the profile
             age: userData.typeformResponses.age || undefined,
             weight: userData.typeformResponses.weight || undefined,
             height: userData.typeformResponses.height || undefined,
@@ -339,9 +426,15 @@ async function fetchUserProfileFromFirestore(userId) {
  * Check if a user has completed the Typeform questionnaire
  */
 exports.checkTypeformCompletion = functions.https.onRequest((req, res) => {
-    return corsHandler(req, res, async () => {
+    // Apply CORS middleware
+    return corsMiddleware(req, res, async () => {
         var _a, _b, _c;
         try {
+            // Handle preflight OPTIONS request
+            if (req.method === 'OPTIONS') {
+                res.status(204).send('');
+                return;
+            }
             // Ensure the request method is POST
             if (req.method !== 'POST') {
                 res.status(405).send('Method Not Allowed');
