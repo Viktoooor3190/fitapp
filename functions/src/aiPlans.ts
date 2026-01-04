@@ -1,8 +1,7 @@
-import * as functions from 'firebase-functions';
 import OpenAI from 'openai';
-import * as cors from 'cors';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { onRequest, Request, Response } from 'firebase-functions/v2/https';
 
 // Initialize OpenAI client with a default key for deployment
 // In production, replace with your actual OpenAI API key
@@ -10,14 +9,14 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'sk-dummy-key-for-deployment',
 });
 
-// Initialize CORS middleware
-const corsMiddleware = cors({ 
+// CORS configuration for v2 functions
+const corsOptions = {
   origin: ['http://localhost:3000', 'https://fitness-app-c3a9a.web.app', 'https://fitness-app-c3a9a.firebaseapp.com'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   credentials: true,
   maxAge: 86400 // 24 hours in seconds
-});
+};
 
 // Types
 export interface UserProfile {
@@ -86,26 +85,23 @@ export interface NutritionPlan {
 /**
  * Generate an AI workout plan based on user profile and preferences
  */
-export const generateWorkoutPlan = functions.https.onRequest((req, res) => {
-  // Apply CORS middleware
-  return corsMiddleware(req, res, async () => {
+export const generateWorkoutPlan = onRequest(
+  {
+    cors: corsOptions,
+  },
+  async (request: Request, response: Response): Promise<void> => {
     try {
-      // Handle preflight OPTIONS request
-      if (req.method === 'OPTIONS') {
-        res.status(204).send('');
-        return;
-      }
-      
       // Ensure the request method is POST
-      if (req.method !== 'POST') {
-        res.status(405).send('Method Not Allowed');
+      if (request.method !== 'POST') {
+        response.status(405).json({ error: 'Method Not Allowed' });
         return;
       }
 
-      const { userId, date } = req.body;
+      const body = await request.json();
+      const { userId, date } = body;
       
       if (!userId || !date) {
-        res.status(400).json({
+        response.status(400).json({
           success: false,
           error: 'The function requires userId and date parameters.'
         });
@@ -116,7 +112,7 @@ export const generateWorkoutPlan = functions.https.onRequest((req, res) => {
       const userProfile = await fetchUserProfileFromFirestore(userId);
       
       if (!userProfile) {
-        res.status(404).json({
+        response.status(404).json({
           success: false,
           error: 'User profile data not found. Please ensure the user has completed the Typeform questionnaire.'
         });
@@ -127,7 +123,7 @@ export const generateWorkoutPlan = functions.https.onRequest((req, res) => {
       const prompt = createWorkoutPrompt(userProfile, date);
       
       // Call OpenAI API
-      const response = await openai.chat.completions.create({
+      const aiResponse = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
@@ -143,16 +139,16 @@ export const generateWorkoutPlan = functions.https.onRequest((req, res) => {
       });
 
       // Parse the AI response
-      const aiResponse = response.choices[0].message.content;
-      if (!aiResponse) {
-        res.status(500).json({
+      const aiResponseContent = aiResponse.choices[0].message.content;
+      if (!aiResponseContent) {
+        response.status(500).json({
           success: false,
           error: 'Empty response from AI'
         });
         return;
       }
 
-      const workoutPlan = parseWorkoutPlanResponse(aiResponse, date);
+      const workoutPlan = parseWorkoutPlanResponse(aiResponseContent, date);
       
       // Save to Firestore
       const db = getFirestore();
@@ -162,40 +158,37 @@ export const generateWorkoutPlan = functions.https.onRequest((req, res) => {
         aiGenerated: true
       });
 
-      res.status(200).json({ success: true, data: workoutPlan });
+      response.status(200).json({ success: true, data: workoutPlan });
     } catch (error) {
       console.error('Error generating workout plan:', error);
-      res.status(500).json({
+      response.status(500).json({
         success: false,
         error: 'Failed to generate workout plan'
       });
     }
-  });
-});
+  }
+);
 
 /**
  * Generate an AI nutrition plan based on user profile and preferences
  */
-export const generateNutritionPlan = functions.https.onRequest((req, res) => {
-  // Apply CORS middleware
-  return corsMiddleware(req, res, async () => {
+export const generateNutritionPlan = onRequest(
+  {
+    cors: corsOptions,
+  },
+  async (request: Request, response: Response): Promise<void> => {
     try {
-      // Handle preflight OPTIONS request
-      if (req.method === 'OPTIONS') {
-        res.status(204).send('');
-        return;
-      }
-      
       // Ensure the request method is POST
-      if (req.method !== 'POST') {
-        res.status(405).send('Method Not Allowed');
+      if (request.method !== 'POST') {
+        response.status(405).json({ error: 'Method Not Allowed' });
         return;
       }
 
-      const { userId, date } = req.body;
+      const body = await request.json();
+      const { userId, date } = body;
       
       if (!userId || !date) {
-        res.status(400).json({
+        response.status(400).json({
           success: false,
           error: 'The function requires userId and date parameters.'
         });
@@ -206,7 +199,7 @@ export const generateNutritionPlan = functions.https.onRequest((req, res) => {
       const userProfile = await fetchUserProfileFromFirestore(userId);
       
       if (!userProfile) {
-        res.status(404).json({
+        response.status(404).json({
           success: false,
           error: 'User profile data not found. Please ensure the user has completed the Typeform questionnaire.'
         });
@@ -217,7 +210,7 @@ export const generateNutritionPlan = functions.https.onRequest((req, res) => {
       const prompt = createNutritionPrompt(userProfile, date);
       
       // Call OpenAI API
-      const response = await openai.chat.completions.create({
+      const aiResponse = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
@@ -233,16 +226,16 @@ export const generateNutritionPlan = functions.https.onRequest((req, res) => {
       });
 
       // Parse the AI response
-      const aiResponse = response.choices[0].message.content;
-      if (!aiResponse) {
-        res.status(500).json({
+      const aiResponseContent = aiResponse.choices[0].message.content;
+      if (!aiResponseContent) {
+        response.status(500).json({
           success: false,
           error: 'Empty response from AI'
         });
         return;
       }
 
-      const nutritionPlan = parseNutritionPlanResponse(aiResponse, date);
+      const nutritionPlan = parseNutritionPlanResponse(aiResponseContent, date);
       
       // Save to Firestore
       const db = getFirestore();
@@ -252,16 +245,16 @@ export const generateNutritionPlan = functions.https.onRequest((req, res) => {
         aiGenerated: true
       });
 
-      res.status(200).json({ success: true, data: nutritionPlan });
+      response.status(200).json({ success: true, data: nutritionPlan });
     } catch (error) {
       console.error('Error generating nutrition plan:', error);
-      res.status(500).json({
+      response.status(500).json({
         success: false,
         error: 'Failed to generate nutrition plan'
       });
     }
-  });
-});
+  }
+);
 
 /**
  * Create a prompt for the AI to generate a workout plan
@@ -531,26 +524,23 @@ export async function fetchUserProfileFromFirestore(userId: string): Promise<Use
 /**
  * Check if a user has completed the Typeform questionnaire
  */
-export const checkTypeformCompletion = functions.https.onRequest((req, res) => {
-  // Apply CORS middleware
-  return corsMiddleware(req, res, async () => {
+export const checkTypeformCompletion = onRequest(
+  {
+    cors: corsOptions,
+  },
+  async (request: Request, response: Response): Promise<void> => {
     try {
-      // Handle preflight OPTIONS request
-      if (req.method === 'OPTIONS') {
-        res.status(204).send('');
-        return;
-      }
-      
       // Ensure the request method is POST
-      if (req.method !== 'POST') {
-        res.status(405).send('Method Not Allowed');
+      if (request.method !== 'POST') {
+        response.status(405).json({ error: 'Method Not Allowed' });
         return;
       }
 
-      const { userId } = req.body;
+      const body = await request.json();
+      const { userId } = body;
       
       if (!userId) {
-        res.status(400).json({
+        response.status(400).json({
           success: false,
           error: 'The function requires a userId parameter.'
         });
@@ -559,7 +549,7 @@ export const checkTypeformCompletion = functions.https.onRequest((req, res) => {
 
       const userProfile = await fetchUserProfileFromFirestore(userId);
       
-      res.status(200).json({ 
+      response.status(200).json({ 
         success: true, 
         hasCompletedTypeform: !!userProfile,
         profileData: userProfile ? {
@@ -576,18 +566,18 @@ export const checkTypeformCompletion = functions.https.onRequest((req, res) => {
       });
     } catch (error) {
       console.error('Error checking Typeform completion:', error);
-      res.status(500).json({
+      response.status(500).json({
         success: false,
         error: 'Failed to check Typeform completion status'
       });
     }
-  });
-});
+  }
+);
 
 /**
  * Automatically generate workout and nutrition plans when a user completes the Typeform questionnaire
  */
-export const autoGeneratePlans = onDocumentUpdated('profiles/{userId}', async (event) => {
+export const autoGeneratePlans = onDocumentUpdated('users/{userId}', async (event) => {
   try {
     // Check if data exists
     if (!event.data) {
@@ -693,7 +683,7 @@ export const autoGeneratePlans = onDocumentUpdated('profiles/{userId}', async (e
     });
     
     // Update user profile to indicate plans have been auto-generated
-    const userProfileRef = db.collection('profiles').doc(userId);
+    const userProfileRef = db.collection('users').doc(userId);
     batch.update(userProfileRef, { 
       plansAutoGenerated: true,
       plansAutoGeneratedAt: FieldValue.serverTimestamp(),
